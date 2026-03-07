@@ -2,6 +2,9 @@
 
 import { useCallback, useEffect, useState } from "react";
 
+// High z-index so the button and panel appear above Cursor Browser's embedded viewport
+const DEBUG_Z_INDEX = 2147483647;
+
 interface TsErrorItem {
   file: string;
   line: number;
@@ -26,14 +29,32 @@ export function TypeScriptErrorsDebug() {
   const [errors, setErrors] = useState<TsErrorItem[]>([]);
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [fetchError, setFetchError] = useState<string | null>(null);
+
+  const FETCH_TIMEOUT_MS = 15000;
 
   const fetchErrors = useCallback(async () => {
+    setFetchError(null);
+    setLoading(true);
+    const ac = new AbortController();
+    const timeoutId = setTimeout(() => ac.abort(), FETCH_TIMEOUT_MS);
     try {
-      const res = await fetch("/api/ts-errors");
+      const res = await fetch("/api/ts-errors", {
+        cache: "no-store",
+        signal: ac.signal,
+      });
+      clearTimeout(timeoutId);
       const data = await res.json();
       setErrors(data.errors ?? []);
-    } catch {
+      if (!res.ok) setFetchError(res.statusText || "Request failed");
+    } catch (e) {
+      clearTimeout(timeoutId);
       setErrors([]);
+      if (e instanceof Error && e.name === "AbortError") {
+        setFetchError("Request timed out");
+      } else {
+        setFetchError(e instanceof Error ? e.message : "Failed to load");
+      }
     } finally {
       setLoading(false);
     }
@@ -43,20 +64,27 @@ export function TypeScriptErrorsDebug() {
     fetchErrors();
   }, [fetchErrors]);
 
+  useEffect(() => {
+    const onFocus = () => { fetchErrors(); };
+    window.addEventListener("focus", onFocus);
+    return () => window.removeEventListener("focus", onFocus);
+  }, [fetchErrors]);
+
   const handleCopy = useCallback(() => {
     const text = formatAllForCopy(errors);
     void navigator.clipboard.writeText(text);
   }, [errors]);
 
   const hasErrors = errors.length > 0;
+  const showButton = hasErrors;
 
-  if (!hasErrors && !open) {
+  if (!showButton && !open) {
     return null;
   }
 
   return (
     <>
-      {hasErrors && (
+      {showButton && (
         <button
           type="button"
           onClick={() => setOpen((o) => !o)}
@@ -65,7 +93,7 @@ export function TypeScriptErrorsDebug() {
             position: "fixed",
             left: 12,
             bottom: 12,
-            zIndex: 9998,
+            zIndex: DEBUG_Z_INDEX,
             padding: "8px 12px",
             backgroundColor: "#c00",
             color: "#fff",
@@ -89,7 +117,7 @@ export function TypeScriptErrorsDebug() {
             position: "fixed",
             left: 12,
             bottom: 52,
-            zIndex: 9999,
+            zIndex: DEBUG_Z_INDEX,
             width: "min(420px, calc(100vw - 24px))",
             maxHeight: "min(60vh, 400px)",
             backgroundColor: "var(--bg)",
@@ -160,6 +188,26 @@ export function TypeScriptErrorsDebug() {
           >
             {loading ? (
               <span style={{ color: "var(--muted)" }}>Checking…</span>
+            ) : fetchError ? (
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                <span style={{ color: "var(--muted)" }}>{fetchError}</span>
+                <button
+                  type="button"
+                  onClick={() => fetchErrors()}
+                  style={{
+                    padding: "6px 12px",
+                    fontSize: 12,
+                    cursor: "pointer",
+                    alignSelf: "flex-start",
+                    backgroundColor: "var(--muted)",
+                    color: "var(--bg)",
+                    border: "none",
+                    borderRadius: 4,
+                  }}
+                >
+                  Retry
+                </button>
+              </div>
             ) : errors.length === 0 ? (
               <span style={{ color: "var(--muted)" }}>No TypeScript errors.</span>
             ) : (

@@ -6,7 +6,21 @@ const BLOB_MERGED_PREFIX = "blob_merged_";
 
 const DEBOUNCE_MS = 500;
 
+/** Debounce for saving to cloud after move (SET_POSITION). */
+export const POSITION_SAVE_DEBOUNCE_MS = 300;
+
+/** How often to poll cloud and merge into local (e.g. other device edits). */
+export const CLOUD_POLL_INTERVAL_MS = 30_000;
+
 let saveTimeout: ReturnType<typeof setTimeout> | null = null;
+
+/** Cancel any pending debounced cloud save. Call before an immediate save to avoid double-save. */
+export function clearSaveTimeout(): void {
+  if (saveTimeout) {
+    clearTimeout(saveTimeout);
+    saveTimeout = null;
+  }
+}
 
 export function loadBlobsFromStorage(): Blob[] {
   if (typeof window === "undefined") return [];

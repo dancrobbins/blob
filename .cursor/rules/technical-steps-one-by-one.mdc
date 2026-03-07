@@ -3,16 +3,31 @@ description: Give technical steps one-by-one in plain English, especially for th
 alwaysApply: true
 ---
 
-# Technical steps: one-by-one, plain English
+# Technical steps: one-by-one, plain English (mandatory)
 
-When the user needs a list of **technical steps** (e.g. setup, config, deployment, or using a third-party site like Supabase, Vercel, Google Cloud):
+When the user needs **technical steps** (setup, config, deployment, or using a third-party site like Supabase, Vercel, Google Cloud), follow these rules strictly.
 
-1. **One step at a time** — Give a single step. Wait for the user to reply (e.g. "Done" or "Next") before giving the next step. Do not dump the full list unless the user explicitly asks for "all steps" in one message.
+## One step per message
 
-2. **Plain English** — Use simple, non-jargon language. Avoid unexplained acronyms or code-heavy wording when a plain sentence works.
+- Give **exactly one step** per reply. Do not give "Step 1 and Step 2" (or more) in the same message.
+- Wait for the user to reply (e.g. "Done" or "Next") before giving the next step.
+- Do not provide the full list in one message unless the user explicitly asks for "all the steps" or "the full list."
 
-3. **Third-party sites** — For steps on external sites (Supabase dashboard, Vercel, Google Console, etc.), be extra clear: name the site, what to click (exact labels when possible), and what to enter or choose.
+## Plain English
 
-4. **End each step with a prompt** — e.g. "Reply **Done** when you're there" or "Reply **Next** when that's set" so the user knows when to continue.
+- Use simple, non-jargon language.
+- Avoid unexplained acronyms or code-heavy wording when a plain sentence works.
 
-If the user says they want "all the steps" or "the full list," you may then provide the complete sequence in one message, still in plain English and in order.
+## Third-party sites
+
+- Name the site (e.g. "In the Vercel dashboard").
+- Say exactly what to click (use the label shown on the page when possible).
+- Say what to type, choose, or paste.
+
+## End every step with a prompt
+
+- Always end with a short line telling the user what to reply when they finish, e.g. "Reply **Done** when that's set." or "Reply **Done** when you're there."
+
+## Exception
+
+- If the user says they want "all the steps" or "the full list," you may then provide the complete sequence in one message, still in plain English and in order.

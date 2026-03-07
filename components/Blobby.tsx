@@ -34,8 +34,11 @@ export function Blobby() {
   const row = Math.floor(expressionIndex / BLOBBY_GRID_COLS);
   const col = expressionIndex % BLOBBY_GRID_COLS;
 
-  const imageUrl = `/assets/character%20expressions/${color}.png`;
-  const size = 100; // display size of one cell in the sprite
+  const imageUrl = `/assets/character%20expressions/${encodeURIComponent(color)}.png`;
+  const size = 100; // display size of one cell in the sprite (one character graphic, no crop)
+  // For background-size 300% 300%, CSS background-position % uses (container - image) * p;
+  // to show cell (col, row) we need position (col*50, row*50)% so each cell is exactly one frame.
+  const positionPct = 50; // 0%, 50%, 100% for the 3 columns/rows
 
   return (
     <div
@@ -49,7 +52,7 @@ export function Blobby() {
         height: size,
         backgroundImage: `url(${imageUrl})`,
         backgroundSize: `${BLOBBY_GRID_COLS * 100}% ${BLOBBY_GRID_ROWS * 100}%`,
-        backgroundPosition: `${col * 50}% ${row * 50}%`,
+        backgroundPosition: `${col * positionPct}% ${row * positionPct}%`,
         imageRendering: "crisp-edges",
         pointerEvents: "none",
       }}

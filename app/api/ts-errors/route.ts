@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
 import { execSync } from "child_process";
-import path from "path";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -46,6 +45,10 @@ function parseTscOutput(output: string): TsErrorItem[] {
 }
 
 export async function GET() {
+  // Only run the type checker in development; production/sandbox envs often can't run npx/tsc (e.g. no home dir).
+  if (process.env.NODE_ENV !== "development") {
+    return NextResponse.json({ errors: [] });
+  }
   try {
     const cwd = process.cwd();
     execSync("npx tsc --noEmit --pretty false 2>&1", {

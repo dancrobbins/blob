@@ -1,24 +1,39 @@
 ---
-description: After every user-facing change, rebuild, update build info, and refresh Cursor Browser (mandatory)
+description: MANDATORY - After every code change: update version.json, run runapp, fix build if broken, refresh Cursor Browser - ALL IN THE SAME TURN. Never stop after a build failure. Never stop after only editing code.
 alwaysApply: true
 ---
 
 # Post-change rebuild and refresh (mandatory)
 
-**This rule is mandatory. You must perform these steps every time. Do not skip, summarize, or defer to the user.**
+**This rule is mandatory. You must perform all four steps below in the same turn as your code changes. The task is NOT complete until all four steps are done successfully. Do not skip, summarize, or defer to the user.**
 
-After **any user-facing change** (including features, bug fixes, copy changes, and UI tweaks), before saying the work is "done" or "complete":
+**Completion checklist (all required in the same response as the code change):**  
+□ 1. Edit `version.json` (add to `updates`)  
+□ 2. Run `npm run runapp` — if it FAILS, fix the build and run it again. Keep going until it succeeds.  
+□ 3. Call `browser_tabs` with `action: "list"`  
+□ 4. Call `browser_navigate` with app URL + cache-busting param  
+
+**STOP CONDITIONS — these are NOT acceptable ways to end a turn:**
+- ❌ "Here's a summary of changes." — without running runapp and refreshing the browser.
+- ❌ "The build failed." — without fixing the build and re-running runapp.
+- ❌ "There was a build error." — without resolving it and completing steps 2–4.
+- ❌ Saying the feature is done while the browser still shows the old app.
+
+If the build fails, you must fix the issue immediately (do not ask the user for help unless genuinely blocked) and run runapp again. Do not end the turn until runapp succeeds and the browser tab has been refreshed.
+
+After **any user-facing change** (including features, bug fixes, copy changes, and UI tweaks), **in the same turn** before saying the work is "done" or "complete":
 
 ## 1. Update build info so this change produces a new build
 
-- Edit **`version.json`**: add a new entry to the **`updates`** array with a short, plain-English description of what changed (e.g. "Removed the word Build from the main menu section.", "Fixed login button on mobile.", "Added Duplicate/Delete to blob menu.").
-- Do this for **every user-facing change**, including small copy or UI tweaks. This causes the next build to be treated as a new build and keeps the build tooltip (main menu) accurate.
+- Edit **`version.json`**: add a new entry to the **`updates`** array with a short, plain-English description of what changed.
+- Do this for **every user-facing change**, including small copy or UI tweaks.
 
-## 2. Run runapp (new build + dev server)
+## 2. Run runapp (new build + dev server) — fix failures before continuing
 
 - In the project root, run: **`npm run runapp`**
-- This runs a full build (including writing build-info from `version.json`) and either reuses the existing dev server on port 3000/3001 or starts one if none is running.
-- Wait for the command to finish. If it printed "Dev server starting.", wait 2–3 seconds for the server to be ready.
+- Wait for the command to finish.
+- **If runapp fails:** diagnose the build error, fix it, and run `npm run runapp` again. Repeat until the build succeeds. Do NOT move on to steps 3–4 until runapp exits successfully.
+- If it printed "Dev server starting.", wait 2–3 seconds for the server to be ready.
 
 ## 3. List Cursor Browser tabs
 
@@ -26,18 +41,18 @@ After **any user-facing change** (including features, bug fixes, copy changes, a
 
 ## 4. Refresh the app tab so the existing Cursor Browser shows the update
 
-- If any tab's URL is the app (`http://localhost:3000` or `http://localhost:3001`, with or without path): call **`browser_navigate`** with that same URL plus a **cache-busting query param** (e.g. `http://localhost:3001/?_=1734567890123` using `Date.now()` or a short timestamp). This forces a full reload so the app and build tooltip show the latest build **without the user doing anything**.
-- If no tab is on the app: call **`browser_navigate`** with `http://localhost:3000?_=...` (or 3001 if 3000 is in use). Prefer reusing an existing tab; do not ask the user to open the URL.
+- If any tab's URL is the app (`http://localhost:3000` or `http://localhost:3001`, with or without path): call **`browser_navigate`** with that same URL plus a **cache-busting query param** (e.g. `http://localhost:3001/?_=1734567890123` using `Date.now()` or a short timestamp).
+- If no tab is on the app: call **`browser_navigate`** with `http://localhost:3000?_=...` (or 3001 if 3000 is in use). Do not ask the user to open the URL.
 
 ## When this applies
 
-- After **any user-facing change**: feature, bug fix, copy edit, UI tweak, or config change that affects what the user sees or how the app behaves.
+- After **any user-facing change**: feature, bug fix, copy edit, UI tweak, or config change.
 - Before you say the work is "done," "complete," or "ready."
 
 ## Hardening
 
-- **Every user-facing change** triggers this flow; no exceptions. Perform all steps as part of closing out the task.
-- Do not assume the user will run runapp or refresh the browser. The agent must run runapp and refresh the app tab so the Cursor Browser **automatically** shows the update.
-- Do not skip the browser steps because "the user can refresh" or "the build succeeded."
-- If the build fails, fix the build (and fix or revert `version.json` if needed), then run runapp again and perform the browser refresh.
-- Always use a cache-busting query param on the refresh URL so the loaded page reflects the new build.
+- **Same turn, no exceptions:** Steps 1–4 must be executed in the **same response** as the code change.
+- **Build failures must be fixed in the same turn.** Never end a turn with a broken build. Fix the error and re-run runapp until it succeeds.
+- **Never assume the user will rebuild or refresh.** The agent runs runapp and calls browser_navigate so the Cursor Browser updates automatically.
+- **Running the build is not enough** — the open tab must be reloaded with a cache-busting URL.
+- Always use a cache-busting query param on the refresh URL.

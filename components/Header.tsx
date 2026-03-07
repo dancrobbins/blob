@@ -5,11 +5,8 @@ import { useBlobsContext } from "@/contexts/BlobsContext";
 import { APP_VERSION, BUILD_TIME, BUILD_UPDATES } from "@/lib/constants";
 import type { BuildInfo } from "@/lib/types";
 import { supabase } from "@/lib/supabase";
-import { BLOBBY_GRID_COLS, BLOBBY_GRID_ROWS } from "@/lib/types";
+import { BLOBBY_COLOR_NAMES, BLOBBY_GRID_COLS, BLOBBY_GRID_ROWS } from "@/lib/types";
 import styles from "./Header.module.css";
-
-// Grid order: left-to-right, top-to-bottom (indices 0..8). Add names as you add expression assets.
-const BLOBBY_COLORS: string[] = ["pink"];
 
 export function Header({
   hasHiddenBlobs,
@@ -27,6 +24,12 @@ export function Header({
   }, [menuOpen, accountOpen, anyMenuOpenRef]);
 
   useEffect(() => {
+    return () => {
+      if (menuCloseTimeoutRef.current) clearTimeout(menuCloseTimeoutRef.current);
+    };
+  }, []);
+
+  useEffect(() => {
     const closeMenus = () => {
       setMenuOpen(false);
       setAccountOpen(false);
@@ -42,10 +45,11 @@ export function Header({
   const menuRef = useRef<HTMLDivElement>(null);
   const accountRef = useRef<HTMLDivElement>(null);
   const buildTooltipRef = useRef<HTMLDivElement>(null);
+  const menuCloseTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Fetch build info at runtime so it updates after runapp without restarting the dev server
-  useEffect(() => {
-    fetch("/api/build-info")
+  // Fetch build info at runtime; refetch when menu opens so new builds show without full refresh
+  const fetchBuildInfo = () => {
+    fetch("/api/build-info", { cache: "no-store" })
       .then((r) => (r.ok ? r.json() : null))
       .then((data: BuildInfo | null) => {
         if (data && typeof data.buildTime === "string" && Array.isArray(data.updates)) {
@@ -53,7 +57,13 @@ export function Header({
         }
       })
       .catch(() => {});
+  };
+  useEffect(() => {
+    fetchBuildInfo();
   }, []);
+  useEffect(() => {
+    if (menuOpen) fetchBuildInfo();
+  }, [menuOpen]);
 
   const readAvatarFromUser = (user: { user_metadata?: Record<string, unknown>; raw_user_meta_data?: Record<string, unknown> } | null) => {
     if (!user) return null;
@@ -126,7 +136,7 @@ export function Header({
   };
 
   const handleBlobbyCellClick = (index: number) => {
-    const color = BLOBBY_COLORS[index] ?? preferences.blobbyColor;
+    const color = BLOBBY_COLOR_NAMES[index] ?? preferences.blobbyColor;
     setPreferences((p) => ({ ...p, blobbyColor: color }));
   };
 
@@ -162,7 +172,23 @@ export function Header({
 
   return (
     <header className={styles.header}>
-      <div className={styles.left} ref={menuRef}>
+      <div
+        className={styles.left}
+        ref={menuRef}
+        onMouseEnter={() => {
+          if (menuCloseTimeoutRef.current) {
+            clearTimeout(menuCloseTimeoutRef.current);
+            menuCloseTimeoutRef.current = null;
+          }
+          setMenuOpen(true);
+        }}
+        onMouseLeave={() => {
+          menuCloseTimeoutRef.current = setTimeout(() => {
+            setMenuOpen(false);
+            menuCloseTimeoutRef.current = null;
+          }, 150);
+        }}
+      >
         <button
           type="button"
           className={styles.mainMenu}
@@ -226,6 +252,7 @@ export function Header({
                     type="button"
                     className={styles.blobbyCell}
                     onClick={() => handleBlobbyCellClick(i)}
+                    data-selected={BLOBBY_COLOR_NAMES[i] === preferences.blobbyColor}
                     style={{
                       width: `${100 / BLOBBY_GRID_COLS}%`,
                       height: `${100 / BLOBBY_GRID_ROWS}%`,
@@ -233,6 +260,7 @@ export function Header({
                       top: `${Math.floor(i / BLOBBY_GRID_COLS) * (100 / BLOBBY_GRID_ROWS)}%`,
                     }}
                     aria-label={`Blobby option ${i + 1}`}
+                    aria-pressed={BLOBBY_COLOR_NAMES[i] === preferences.blobbyColor}
                   />
                 ))}
               </div>
@@ -245,6 +273,18 @@ export function Header({
                 onClick={() => onUnhideAll?.()}
               >
                 Unhide all
+              </button>
+            </div>
+            <div className={styles.menuSection}>
+              <button
+                type="button"
+                className={styles.menuAction}
+                onClick={() => {
+                  setMenuOpen(false);
+                  window.dispatchEvent(new CustomEvent("blob:show-all"));
+                }}
+              >
+                Show all
               </button>
             </div>
             <div className={styles.menuSection}>
@@ -263,7 +303,7 @@ export function Header({
                   className={styles.buildTooltipTrigger}
                   onClick={() => setBuildTooltipOpen((o) => !o)}
                   aria-expanded={buildTooltipOpen}
-                  aria-label="Build number and date; tap or hover for updates in this build"
+                  aria-label="Number and date; tap or hover for updates"
                 >
                   {buildLabel}
                 </button>
@@ -274,7 +314,7 @@ export function Header({
                     id="build-updates-tooltip"
                   >
                     {buildNumberDisplay > 0 && (
-                      <p className={styles.buildTooltipHeading}>Build #{buildNumberDisplay}</p>
+                      <p className={styles.buildTooltipHeading}>#{buildNumberDisplay}</p>
                     )}
                     {buildUpdatesList.length > 0 && (
                       <ul className={styles.buildTooltipList}>

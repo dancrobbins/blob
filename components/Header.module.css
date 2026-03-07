@@ -300,8 +300,18 @@
   background: rgba(0, 0, 0, 0.05);
 }
 
+.blobbyCell[data-selected="true"] {
+  border-color: var(--accent, #333);
+  box-shadow: 0 0 0 2px var(--accent, #333);
+}
+
 [data-theme="dark"] .blobbyCell:hover {
   background: rgba(255, 255, 255, 0.08);
+}
+
+[data-theme="dark"] .blobbyCell[data-selected="true"] {
+  border-color: var(--accent, #888);
+  box-shadow: 0 0 0 2px var(--accent, #888);
 }
 
 .accountBubble {

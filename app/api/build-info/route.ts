@@ -10,15 +10,28 @@ export async function GET() {
     const raw = fs.readFileSync(filePath, "utf8");
     const data = JSON.parse(raw) as unknown;
     if (data && typeof data === "object" && "buildTime" in data) {
-      return NextResponse.json(data);
+      return NextResponse.json(data, {
+        headers: {
+          "Cache-Control": "no-store, no-cache, must-revalidate",
+          Pragma: "no-cache",
+        },
+      });
     }
   } catch {
     // File missing or invalid; fallback
   }
-  return NextResponse.json({
-    buildNumber: 0,
-    buildTime: new Date().toISOString(),
-    version: "1.0.0",
-    updates: [] as string[],
-  });
+  return NextResponse.json(
+    {
+      buildNumber: 0,
+      buildTime: new Date().toISOString(),
+      version: "1.0.0",
+      updates: [] as string[],
+    },
+    {
+      headers: {
+        "Cache-Control": "no-store, no-cache, must-revalidate",
+        Pragma: "no-cache",
+      },
+    }
+  );
 }

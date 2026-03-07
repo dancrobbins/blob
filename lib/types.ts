@@ -22,6 +22,19 @@ export const DEFAULT_PREFERENCES: Preferences = {
 export const BLOBBY_GRID_ROWS = 3;
 export const BLOBBY_GRID_COLS = 3;
 
+/** Color scheme names for Blobby (grid order: left-to-right, top-to-bottom). Must match filenames in public/assets/character expressions/. */
+export const BLOBBY_COLOR_NAMES: string[] = [
+  "pink",
+  "green",
+  "light brown",
+  "seafoam",
+  "purple",
+  "yellow",
+  "dark brown",
+  "rainbow",
+  "grey",
+];
+
 /** Character sprite grid (same as blobby grid). */
 export const CHARACTER_GRID_ROWS = BLOBBY_GRID_ROWS;
 export const CHARACTER_GRID_COLS = BLOBBY_GRID_COLS;

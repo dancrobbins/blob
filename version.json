@@ -2,6 +2,8 @@
   "version": "1.0.0",
   "updates": [
     "Build tooltip now updates after runapp without restarting the dev server.",
-    "Post-feature rule: update version.json, run runapp, refresh with cache-bust so the tooltip stays in sync."
+    "Post-feature rule: update version.json, run runapp, refresh with cache-bust so the tooltip stays in sync.",
+    "Show all button in main menu pans and zooms the view to fit all blobs.",
+    "Use updated character graphics; Blobby color scheme choice updates bottom character and shows selection highlight in menu."
   ]
 }

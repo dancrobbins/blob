@@ -28,6 +28,18 @@
   box-shadow: 0 2px 12px rgba(0, 0, 0, 0.3);
 }
 
+.card[data-selected] {
+  box-shadow:
+    0 2px 12px rgba(0, 0, 0, 0.06),
+    0 0 0 2px var(--selection-cue, rgba(0, 120, 212, 0.35));
+}
+
+[data-theme="dark"] .card[data-selected] {
+  box-shadow:
+    0 2px 12px rgba(0, 0, 0, 0.3),
+    0 0 0 2px var(--selection-cue, rgba(100, 180, 255, 0.4));
+}
+
 .dragHandle {
   flex-shrink: 0;
   width: 24px;

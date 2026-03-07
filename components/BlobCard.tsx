@@ -52,6 +52,7 @@ export function BlobCard({
   onDuplicate,
   onDelete,
   scale = 1,
+  isSelected = false,
 }: {
   blob: Blob;
   autoFocus?: boolean;
@@ -62,6 +63,7 @@ export function BlobCard({
   onDuplicate: () => void;
   onDelete: () => void;
   scale?: number;
+  isSelected?: boolean;
 }) {
   const cardRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
@@ -234,7 +236,7 @@ export function BlobCard({
       >
         ⋮⋮
       </div>
-      <div className={styles.card}>
+      <div className={styles.card} data-selected={isSelected || undefined}>
         <div
           ref={contentRef}
           className={styles.content}

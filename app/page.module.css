@@ -7,11 +7,11 @@
 
 .canvas {
   position: fixed;
-  top: 0;
+  top: 52px;
   left: 0;
   right: 0;
   bottom: 0;
-  padding-top: 52px;
+  z-index: 0;
   -webkit-tap-highlight-color: transparent;
   overflow: hidden;
 }

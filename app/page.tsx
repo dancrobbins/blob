@@ -13,10 +13,16 @@ import styles from "./page.module.css";
 
 const DRAG_THRESHOLD = 5;
 const SELECTION_PADDING = 4;
+/** If the user moves past threshold within this ms of pointer down → pan. If after → rectangle select. */
+const HOLD_DELAY_MS = 220;
 const MIN_SCALE = 0.25;
 const MAX_SCALE = 3;
 const WHEEL_ZOOM_SENSITIVITY = 0.002;
 const HEADER_HEIGHT = 52;
+/** Approximate card size in world coords for "Show all" bounds. */
+const CARD_WIDTH = 250;
+const CARD_HEIGHT = 80;
+const SHOW_ALL_PADDING = 48;
 
 type Bounds = { left: number; top: number; width: number; height: number };
 
@@ -72,6 +78,7 @@ export default function Home() {
   const pointerDownOnCanvas = useRef(false);
   const menuWasOpenAtPointerDown = useRef(false);
   const dragStart = useRef<{ x: number; y: number } | null>(null);
+  const pointerDownTimeRef = useRef<number>(0);
   /** When we cross the threshold, freeze the anchor at rounded pixel so the initial corner doesn't jitter. */
   const anchorRef = useRef<{ x: number; y: number } | null>(null);
   const isDrawingSelection = useRef(false);
@@ -79,6 +86,12 @@ export default function Home() {
   const prevBlobCountRef = useRef(blobs.length);
   const selectionMenuRef = useRef<HTMLDivElement>(null);
   const isPanningRef = useRef(false);
+  /** Selection count at pointer down; used to clear selection on tap without adding a blob. */
+  const selectedIdsCountRef = useRef(0);
+  const selectedIdsRef = useRef<string[]>([]);
+  const hadSelectionAtPointerDownRef = useRef(false);
+  /** True once we've committed to either pan or selection for this gesture. */
+  const gestureChosenRef = useRef(false);
   const activePointersRef = useRef<Map<number, { clientX: number; clientY: number }>>(new Map());
   const lastPinchRef = useRef<{ distance: number; centerX: number; centerY: number } | null>(null);
   const panRef = useRef({ x: 0, y: 0 });
@@ -139,6 +152,27 @@ export default function Home() {
     }
   }, [selectedIds, visibleBlobs]);
 
+  useEffect(() => {
+    selectedIdsCountRef.current = selectedIds.length;
+    selectedIdsRef.current = selectedIds;
+  }, [selectedIds]);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== "Delete" && e.key !== "Backspace") return;
+      const ids = selectedIdsRef.current;
+      if (ids.length === 0) return;
+      e.preventDefault();
+      e.stopPropagation();
+      if (window.confirm("Are you sure?")) {
+        dispatch({ type: "DELETE_BLOBS", payload: ids });
+        setSelectedIds([]);
+      }
+    };
+    document.addEventListener("keydown", handleKeyDown, true);
+    return () => document.removeEventListener("keydown", handleKeyDown, true);
+  }, [dispatch]);
+
   const handlePointerDown = useCallback(
     (e: React.PointerEvent) => {
       const target = e.target as HTMLElement;
@@ -154,7 +188,10 @@ export default function Home() {
         pointerDownOnCanvas.current = true;
         primaryPointerIdRef.current = e.pointerId;
         menuWasOpenAtPointerDown.current = anyMenuOpenRef.current;
+        hadSelectionAtPointerDownRef.current = selectedIdsCountRef.current > 0;
         dragStart.current = { x: e.clientX, y: e.clientY };
+        pointerDownTimeRef.current = Date.now();
+        gestureChosenRef.current = false;
         isDrawingSelection.current = false;
         isPanningRef.current = false;
         setSelectionRect(null);
@@ -194,9 +231,20 @@ export default function Home() {
     const dx = e.clientX - dragStart.current.x;
     const dy = e.clientY - dragStart.current.y;
     const distance = Math.sqrt(dx * dx + dy * dy);
-    if (!isPanningRef.current && !isDrawingSelection.current && distance > DRAG_THRESHOLD) {
-      isPanningRef.current = true;
-      setIsPanning(true);
+    const elapsed = Date.now() - pointerDownTimeRef.current;
+    // First time past threshold: choose pan vs rectangle select by hold time.
+    if (!gestureChosenRef.current && distance > DRAG_THRESHOLD) {
+      gestureChosenRef.current = true;
+      if (elapsed < HOLD_DELAY_MS) {
+        isPanningRef.current = true;
+        setIsPanning(true);
+      } else {
+        isDrawingSelection.current = true;
+        anchorRef.current = {
+          x: Math.round(dragStart.current.x),
+          y: Math.round(dragStart.current.y),
+        };
+      }
     }
     if (isPanningRef.current) {
       setPan((prev) => {
@@ -206,13 +254,6 @@ export default function Home() {
       });
       dragStart.current = { x: e.clientX, y: e.clientY };
       return;
-    }
-    if (!isDrawingSelection.current && distance > DRAG_THRESHOLD) {
-      isDrawingSelection.current = true;
-      anchorRef.current = {
-        x: Math.round(dragStart.current.x),
-        y: Math.round(dragStart.current.y),
-      };
     }
     if (isDrawingSelection.current && anchorRef.current) {
       const anchor = anchorRef.current;
@@ -241,6 +282,7 @@ export default function Home() {
       pointerDownOnCanvas.current = false;
       dragStart.current = null;
       anchorRef.current = null;
+      gestureChosenRef.current = false;
 
       if (isDrawingSelection.current && selectionRectRef.current && canvasRef.current) {
         const rect = selectionRectRef.current;
@@ -265,6 +307,8 @@ export default function Home() {
       if (target.closest("[data-blob-card]") || target.closest("header")) return;
 
       setSelectedIds([]);
+      if (hadSelectionAtPointerDownRef.current) return;
+
       const { x: worldX, y: worldY } = screenToWorld(
         e.clientX - 24,
         e.clientY - 24,
@@ -308,6 +352,50 @@ export default function Home() {
     return () => el.removeEventListener("wheel", handleWheel);
   }, [handleWheel]);
 
+  const showAll = useCallback(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const viewportWidth = canvas.clientWidth;
+    const viewportHeight = canvas.clientHeight;
+    if (visibleBlobs.length === 0) {
+      panRef.current = { x: 0, y: 0 };
+      scaleRef.current = 1;
+      setPan({ x: 0, y: 0 });
+      setScale(1);
+      return;
+    }
+    let left = Infinity;
+    let top = Infinity;
+    let right = -Infinity;
+    let bottom = -Infinity;
+    for (const b of visibleBlobs) {
+      left = Math.min(left, b.x);
+      top = Math.min(top, b.y);
+      right = Math.max(right, b.x + CARD_WIDTH);
+      bottom = Math.max(bottom, b.y + CARD_HEIGHT);
+    }
+    const boundsWidth = right - left + SHOW_ALL_PADDING * 2;
+    const boundsHeight = bottom - top + SHOW_ALL_PADDING * 2;
+    const scaleX = viewportWidth / boundsWidth;
+    const scaleY = viewportHeight / boundsHeight;
+    let newScale = Math.min(scaleX, scaleY, MAX_SCALE);
+    newScale = Math.max(MIN_SCALE, newScale);
+    const boundsCenterX = (left + right) / 2;
+    const boundsCenterY = (top + bottom) / 2;
+    const newPanX = viewportWidth / 2 - boundsCenterX * newScale;
+    const newPanY = viewportHeight / 2 - boundsCenterY * newScale;
+    panRef.current = { x: newPanX, y: newPanY };
+    scaleRef.current = newScale;
+    setPan({ x: newPanX, y: newPanY });
+    setScale(newScale);
+  }, [visibleBlobs]);
+
+  useEffect(() => {
+    const handler = () => showAll();
+    window.addEventListener("blob:show-all", handler);
+    return () => window.removeEventListener("blob:show-all", handler);
+  }, [showAll]);
+
   return (
     <main className={styles.main}>
       <Header hasHiddenBlobs={blobs.some((b) => b.hidden)} onUnhideAll={() => dispatch({ type: "UNHIDE_ALL" })} />
@@ -336,6 +424,7 @@ export default function Home() {
             key={blob.id}
             blob={blob}
             scale={scale}
+            isSelected={selectedIds.includes(blob.id)}
             autoFocus={blob.id === focusBlobId}
             onAutoFocusDone={() => setFocusBlobId(null)}
             onUpdate={(content) =>

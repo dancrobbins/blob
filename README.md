@@ -2,6 +2,8 @@
 
 Tap anywhere to create a blob. Type bulleted lists, drag blobs around. Blobs persist in the browser; sign in with Google to sync to the cloud.
 
+**Live app:** [https://blobapp.vercel.app/](https://blobapp.vercel.app/)
+
 ## Setup
 
 1. **Install and run**
@@ -13,7 +15,7 @@ Tap anywhere to create a blob. Type bulleted lists, drag blobs around. Blobs per
    - In Authentication → Providers, enable Google and add your OAuth credentials.
    - In **Authentication → URL Configuration**, add these URLs to the **Redirect URLs** allow list:
      - Local: `http://localhost:3000/auth/callback`
-     - Production: `https://your-domain.com/auth/callback` (replace with your app URL).
+     - Production: `https://blobapp.vercel.app/auth/callback`
    - In SQL Editor, run the statements in `supabase-schema.sql` to create the `user_notes` table and RLS.
    - Create `.env.local`:
      - `NEXT_PUBLIC_SUPABASE_URL=` your project URL
