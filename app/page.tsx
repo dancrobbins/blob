@@ -91,6 +91,8 @@ export default function Home() {
   const selectedIdsCountRef = useRef(0);
   const selectedIdsRef = useRef<string[]>([]);
   const hadSelectionAtPointerDownRef = useRef(false);
+  /** True if at pointer down the active element was inside a blob (user was editing); tap-up then cancels insertion only, no new blob. */
+  const hadActiveInsertionAtPointerDownRef = useRef(false);
   /** True once we've committed to either pan or selection for this gesture. */
   const gestureChosenRef = useRef(false);
   const activePointersRef = useRef<Map<number, { clientX: number; clientY: number }>>(new Map());
@@ -131,7 +133,8 @@ export default function Home() {
     for (const card of cards) {
       const id = card.getAttribute("data-blob-id");
       if (!id || !idSet.has(id)) continue;
-      const r = card.getBoundingClientRect();
+      const inner = card.querySelector<HTMLElement>("[data-blob-card-inner]");
+      const r = (inner ?? card).getBoundingClientRect();
       if (!bounds) {
         bounds = { left: r.left, top: r.top, width: r.width, height: r.height };
       } else {
@@ -188,6 +191,9 @@ export default function Home() {
         primaryPointerIdRef.current = e.pointerId;
         menuWasOpenAtPointerDown.current = anyMenuOpenRef.current;
         hadSelectionAtPointerDownRef.current = selectedIdsCountRef.current > 0;
+        hadActiveInsertionAtPointerDownRef.current = !!(
+          document.activeElement && (document.activeElement as HTMLElement).closest?.("[data-blob-card]")
+        );
         dragStart.current = { x: e.clientX, y: e.clientY };
         pointerDownTimeRef.current = Date.now();
         gestureChosenRef.current = false;
@@ -291,7 +297,8 @@ export default function Home() {
         for (const card of cards) {
           const id = card.getAttribute("data-blob-id");
           if (!id) continue;
-          const r = card.getBoundingClientRect();
+          const inner = card.querySelector<HTMLElement>("[data-blob-card-inner]");
+          const r = (inner ?? card).getBoundingClientRect();
           if (isFullyEnclosed(r, rect)) enclosed.push(id);
         }
         setSelectedIds(enclosed);
@@ -307,6 +314,7 @@ export default function Home() {
 
       setSelectedIds([]);
       if (hadSelectionAtPointerDownRef.current) return;
+      if (hadActiveInsertionAtPointerDownRef.current) return;
 
       const { x: worldX, y: worldY } = screenToWorld(
         e.clientX - 24,

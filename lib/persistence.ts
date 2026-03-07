@@ -10,10 +10,10 @@ const DEBOUNCE_MS = 500;
 export const POSITION_SAVE_DEBOUNCE_MS = 300;
 
 /** How often to poll cloud and merge into local (cross-tab / other device sync). */
-export const CLOUD_POLL_INTERVAL_MS = 15_000;
+export const CLOUD_POLL_INTERVAL_MS = 10_000;
 
 /** Delay before first poll after login (so initial load can finish first). */
-export const CLOUD_POLL_INITIAL_DELAY_MS = 2_000;
+export const CLOUD_POLL_INITIAL_DELAY_MS = 1_000;
 
 let saveTimeout: ReturnType<typeof setTimeout> | null = null;
 

@@ -250,7 +250,7 @@ export function BlobCard({
           ⋮⋮
         </div>
       </div>
-      <div className={styles.card} data-selected={isSelected || undefined}>
+      <div className={styles.card} data-blob-card-inner data-selected={isSelected || undefined}>
         <div
           ref={contentRef}
           className={styles.content}

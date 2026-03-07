@@ -1,7 +1,6 @@
 {
   "version": "1.0.0",
   "updates": [
-    "When sign-in redirects to the home page with tokens in the URL, the app now sends you to the callback page and cleans the URL so the UI stays correct.",
-    "Fixed JSX parse error in TypeScript errors debug panel so the app builds."
+    "Sign-in no longer sends deployed users to localhost: OAuth redirect URL is rewritten to the current site when Supabase returns localhost."
   ]
 }

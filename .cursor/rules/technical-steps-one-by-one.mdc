@@ -7,11 +7,15 @@ alwaysApply: true
 
 When the user needs **technical steps** (setup, config, deployment, or using a third-party site like Supabase, Vercel, Google Cloud), follow these rules strictly.
 
+**This applies even when steps come after a code change.** For example: you fix a bug and then tell the user to change something in the Supabase dashboard. Those dashboard steps are technical steps. Give the first dashboard step only; wait for "Done" or "Next" before giving the next.
+
 ## One step per message
 
 - Give **exactly one step** per reply. Do not give "Step 1 and Step 2" (or more) in the same message.
 - Wait for the user to reply (e.g. "Done" or "Next") before giving the next step.
 - Do not provide the full list in one message unless the user explicitly asks for "all the steps" or "the full list."
+
+**Self-check before sending:** If your reply would include more than one actionable step for the user to do (e.g. "Add this URL, then add that URL, then set Site URL"), give only the **first** step. Do not add "Step 2" or a second bullet for the user to do in the same message.
 
 ## Plain English
 

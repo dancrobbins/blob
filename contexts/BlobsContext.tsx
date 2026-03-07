@@ -166,7 +166,7 @@ export function BlobsProvider({ children }: { children: ReactNode }) {
     debouncedSaveToCloud(userId, blobs, preferences);
   }, [blobs, userId, preferences, isLoading]);
 
-  // Poll cloud when logged in: first poll after a short delay, then on a cadence (cross-tab / other device sync)
+  // Poll cloud when logged in: first poll soon, then on a cadence; also poll when tab/window becomes visible (sync when user switches to this tab)
   useEffect(() => {
     if (!userId || !supabase) return;
 
@@ -183,9 +183,19 @@ export function BlobsProvider({ children }: { children: ReactNode }) {
 
     const initialTimer = setTimeout(poll, CLOUD_POLL_INITIAL_DELAY_MS);
     const interval = setInterval(poll, CLOUD_POLL_INTERVAL_MS);
+
+    const onVisibility = () => {
+      if (typeof document !== "undefined" && document.visibilityState === "visible") poll();
+    };
+    const onFocus = () => poll();
+    document.addEventListener("visibilitychange", onVisibility);
+    window.addEventListener("focus", onFocus);
+
     return () => {
       clearTimeout(initialTimer);
       clearInterval(interval);
+      document.removeEventListener("visibilitychange", onVisibility);
+      window.removeEventListener("focus", onFocus);
     };
   }, [userId]);
 

@@ -22,16 +22,17 @@ alwaysApply: true
 - ❌ Saying the feature is done while the browser still shows the old app.
 - ❌ Leaving `version.json` `updates` unchanged from a previous session.
 - ❌ Leaving stale bullets in `version.json` that don't match this session's changes.
+- ❌ **Skipping or omitting Step 1** because the change was "only CSS," "only a small tweak," "just layout," or "didn't touch logic." Version and tooltip must be updated for every user-facing change.
 
 ---
 
-## Step 1 — Update `version.json` (current-build bullets only)
+## Step 1 — Update `version.json` (version number and tooltip)
 
-**`version.json` holds only what changed in the current build session. It must be rewritten each session.**
+**The build number and the main-menu build tooltip are driven by `version.json`. For every user-facing change — including CSS-only, one-line, or "small" changes — you must update `version.json` so the next runapp produces a new build and the tooltip shows what changed. No exceptions.**
 
-Rules:
 - **Clear the existing `updates` array entirely.** Do not keep bullets from a previous session.
-- Add **only** the changes you made in this turn — written as short, plain-English sentences a non-developer can read.
+- Add **only** the changes you made in this turn — short, plain-English sentences.
+- **Even a single CSS change** (e.g. "Dragger height set to 48px.") gets one bullet. This ensures the version/tooltip reflect this build.
 - Keep bullets specific: "Fixed login button not responding on mobile" not "Fixed bug."
 - Each bullet describes one change, ~1 sentence.
 
@@ -84,5 +85,15 @@ Example — what to write after fixing a crash and adding a feature:
 
 ## When this applies
 
-- After **any user-facing change**: feature, bug fix, copy edit, UI tweak, config.
+- After **any user-facing change**. That includes:
+  - **Features** (e.g. new "Show all" button, new menu item).
+  - **Bug fixes** (e.g. fix crash, fix wrong behavior).
+  - **Copy / text** (e.g. change a label, remove the word "Build").
+  - **UI / layout / styling** — **including CSS-only or small visual changes** such as:
+    - Changing a component’s size (e.g. dragger height to 48px).
+    - Padding, margin, colors, borders, alignment.
+    - Any change to `.css`, `.module.css`, or inline styles that affects what the user sees.
+  - **Config** that affects what the user sees or how the app runs.
+- **No exception for "small" changes.** A one-line CSS change (e.g. dragger height) still requires steps 1–4 so the change shows in Cursor Browser.
+- **Version number and tooltip:** Step 1 (editing `version.json`) is what updates the build number and the build tooltip in the main menu. Skipping it for "small" or CSS-only changes is not allowed — the user must see an updated tooltip and build for every change.
 - Before you say the work is "done," "complete," or "ready."

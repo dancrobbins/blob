@@ -15,3 +15,5 @@
 - Fixed JSX parse error in TypeScript errors debug panel so the app builds.
 - When the TypeScript check fails to load (network/500), an amber "Could not check TypeScript errors" button appears so you know something is wrong.
 - Red "TypeScript errors" button is preserved when a later fetch fails; previous errors stay visible until a successful check clears them.
+- Sign-in no longer sends deployed users to localhost: OAuth redirect URL is rewritten to the current site when Supabase returns localhost.
+- Supabase dashboard: add https://blobapp.vercel.app and https://blobapp.vercel.app/auth/callback to Redirect URLs so post-login redirect stays on production.

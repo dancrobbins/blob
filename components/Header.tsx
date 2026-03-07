@@ -160,7 +160,28 @@ export function Header({
     }
     if (data?.url) {
       setAccountOpen(false);
-      window.location.href = data.url;
+      // If Supabase returns a localhost URL (e.g. Site URL in dashboard is localhost) but we're
+      // on production, rewrite to current origin so deployed users stay on blobapp.vercel.app.
+      // Also set Supabase Auth → URL Configuration: add https://blobapp.vercel.app and
+      // https://blobapp.vercel.app/auth/callback to Redirect URLs; set Site URL for production.
+      let url = data.url;
+      if (typeof window !== "undefined") {
+        try {
+          const parsed = new URL(url);
+          if (
+            (parsed.hostname === "localhost" || parsed.hostname === "127.0.0.1") &&
+            window.location.hostname !== "localhost" &&
+            window.location.hostname !== "127.0.0.1"
+          ) {
+            parsed.protocol = window.location.protocol;
+            parsed.host = window.location.host;
+            url = parsed.toString();
+          }
+        } catch {
+          // keep original url
+        }
+      }
+      window.location.href = url;
     }
   };
 

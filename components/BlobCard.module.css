@@ -47,7 +47,8 @@
 
 .dragHandle {
   width: 24px;
-  height: 24px;
+  height: 48px;
+  min-height: 48px;
   display: flex;
   align-items: center;
   justify-content: center;

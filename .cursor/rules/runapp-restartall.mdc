@@ -1,17 +1,17 @@
 ---
-description: Commands "runapp" and "restartall" — rebuild/restart dev server and open app in Cursor Browser
+description: Commands "runapp", "runall" (alias), "restartall" — rebuild/restart dev server and open app in Cursor Browser
 alwaysApply: true
 ---
 
 # runapp and restartall commands
 
-When the user says **runapp** or **restartall**, do the following. The same rebuild-and-refresh procedure (run runapp script, then browser_tabs, then browser_navigate to refresh) is **mandatory after every feature and bug fix** — see the rule "post-feature-rebuild-and-refresh".
+When the user says **runapp**, **runall**, or **restartall**, do the following. **runall** is an alias for **runapp**. The same rebuild-and-refresh procedure (run runapp script, then browser_tabs, then browser_navigate to refresh) is **mandatory after every feature and bug fix** — see the rule "post-feature-rebuild-and-refresh".
 
 ## runapp
 
 **Goal:** Reuse the existing dev server and existing Cursor Browser tab. The user must never see Next.js port messages or be told to "open that URL in your browser."
 
-1. Run `npm run runapp` (rebuilds the app; starts the dev server only if neither port 3000 nor 3001 is in use; otherwise reuses the existing server).
+1. Run `npm run runapp` or `npm run runall` (rebuilds the app; starts the dev server only if neither port 3000 nor 3001 is in use; otherwise reuses the existing server).
 2. If the script printed "Dev server starting.", wait briefly (2–3 s) for the server to be ready.
 3. **Always use the existing Cursor Browser:** Call **cursor-ide-browser** MCP `browser_tabs` with `action: "list"`. If any tab's URL is the app (`http://localhost:3000` or `http://localhost:3001`), use `browser_navigate` with that origin and a cache-busting query (e.g. `?_=1` or `?_=1734567890`) so the latest build and build tooltip load. If no tab is on the app, use `browser_navigate` with `http://localhost:3000?_=1` (or 3001 if needed). Reuse the same tab. Do not tell the user to open a URL in their browser or relay any "port in use" / "open that URL" message.
 
@@ -25,5 +25,5 @@ When the user says **runapp** or **restartall**, do the following. The same rebu
 
 | Command     | Script does                          | Agent then                    |
 |------------|---------------------------------------|-------------------------------|
-| **runapp** | Build; reuse existing dev server if 3000 or 3001 in use, else start | Refresh existing app tab (same URL); never show port/open-browser messages |
+| **runapp** / **runall** | Build; reuse existing dev server if 3000 or 3001 in use, else start | Refresh existing app tab (same URL); never show port/open-browser messages |
 | **restartall** | Kill ports 3000/3001, build, start dev server | Navigate Cursor Browser to app URL |
