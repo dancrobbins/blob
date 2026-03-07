@@ -1,0 +1,23 @@
+---
+description: When asking the user questions, use Q&A format and one question at a time
+alwaysApply: true
+---
+
+# Question format when asking the user
+
+Whenever you need to ask the user a question:
+
+1. **Use Q&A format** — Present the question clearly and leave space for a direct answer (not buried in long prose).
+
+2. **Prefer AskQuestion when available** — If the AskQuestion facility (or equivalent) is available in your environment, use it to present the question. Otherwise, **fall back to multiple choice format** (e.g. "A / B / C" or numbered options) so the user can answer with a single choice.
+
+3. **One question at a time** — Never bundle several questions in one message. Ask one question, wait for the answer, then proceed. If you have follow-up questions, ask them one by one after each response.
+
+Example (multiple choice fallback):
+
+Which scope should this rule apply to?
+A) Always (every conversation)
+B) Only when editing TypeScript files
+C) Only when editing files in src/
+
+Reply with A, B, or C.

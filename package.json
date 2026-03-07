@@ -1,0 +1,27 @@
+{
+  "name": "blob",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "generate-icons": "node scripts/generate-icons.js",
+    "sync-blobby-assets": "node scripts/sync-blobby-assets.js",
+    "runapp": "node scripts/runapp.js",
+    "restartall": "node scripts/restartall.js",
+    "pushme": "node scripts/pushme.js"
+  },
+  "devDependencies": {
+    "@types/node": "^25.3.5",
+    "@types/react": "^19.2.14",
+    "png-to-ico": "^2.1.2",
+    "sharp": "^0.33.5",
+    "typescript": "^5.9.3"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.98.0",
+    "next": "^14.2.35",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  }
+}

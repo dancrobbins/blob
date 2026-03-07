@@ -1,0 +1,13 @@
+---
+description: Command "pushme" — commit and push to current branch (or main)
+alwaysApply: true
+---
+
+# pushme command
+
+When the user says **pushme**:
+
+1. Run `npm run pushme` to commit and push to the current branch (uses **main** if not on a branch, e.g. detached HEAD).
+2. If the user provided a commit message (e.g. "pushme fix login"), run `npm run pushme -- "fix login"` so the message is used instead of the default "Update".
+
+The script stages all changes, commits with the given or default message, and pushes to `origin` for the current branch.

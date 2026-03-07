@@ -1,0 +1,30 @@
+---
+description: After every feature or bug fix, rebuild and refresh the app in Cursor Browser
+alwaysApply: true
+---
+
+# Post-feature/bug rebuild and browser refresh
+
+**This rule is mandatory. Do not skip these steps.**
+
+After completing any feature or fixing any bug:
+
+1. **Rebuild the app**
+   - Run the project build (e.g. `npm run build` for this Next.js app).
+   - Resolve any build errors before considering the task done.
+   - Do not mark the task complete until the build succeeds.
+
+2. **Update the running app in Cursor Browser**
+   - If the dev server is already running, ensure the Cursor Browser tab shows the latest code:
+     - Prefer refreshing the existing tab (e.g. `browser_navigate` to the same app URL or equivalent refresh) so the running app reflects the change.
+   - If the dev server was not running, start it (e.g. `npm run dev`) and open or refresh the app URL in the existing Cursor Browser so the user sees the updated app.
+
+**When this applies**
+- After implementing or completing a feature.
+- After fixing a bug (including small fixes).
+- Before saying the work is "done" or "complete."
+
+**Hardening**
+- Treat "feature completed" and "bug fixed" as triggers: no exceptions.
+- If the user has an existing Cursor Browser tab open on the app, always refresh or reload that tab after a successful build so they see the change immediately.
+- Do not assume the user will rebuild or refresh manually; perform these steps as part of closing out the task.

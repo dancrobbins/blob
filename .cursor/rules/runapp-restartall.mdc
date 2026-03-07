@@ -1,0 +1,27 @@
+---
+description: Commands "runapp" and "restartall" — rebuild/restart dev server and open app in Cursor Browser
+alwaysApply: true
+---
+
+# runapp and restartall commands
+
+When the user says **runapp** or **restartall**, do the following.
+
+## runapp
+
+1. Run `npm run runapp` (rebuilds the app; starts the dev server only if port 3000 and 3001 are not already in use).
+2. If a new dev server was started, wait briefly for it to be ready (e.g. 2–3 seconds).
+3. Open or refresh the app in the **existing** Cursor Browser **using the existing URL when possible**: first call **cursor-ide-browser** MCP `browser_tabs` with `action: "list"` to get open tabs. If any tab's URL is the app (e.g. `http://localhost:3000` or `http://localhost:3001`, with or without path), use `browser_navigate` with that same URL to refresh that tab. If no tab is on the app, use `browser_navigate` with `http://localhost:3000` (or `http://localhost:3001` if 3000 is in use). Reuse the existing tab; do not open a new tab unless necessary.
+
+## restartall
+
+1. Run `npm run restartall` (stops any dev server on ports 3000/3001, rebuilds the app, and starts the dev server in the background).
+2. After the command finishes, wait briefly for the dev server to be ready.
+3. Open the app in the **existing** Cursor Browser: use `browser_navigate` to `http://localhost:3000` (or `http://localhost:3001` if 3000 is in use). Reuse the existing tab when possible.
+
+## Summary
+
+| Command     | Script does                          | Agent then                    |
+|------------|---------------------------------------|-------------------------------|
+| **runapp** | Build; start dev server only if 3000/3001 free | Refresh existing app tab or navigate to app URL |
+| **restartall** | Kill ports 3000/3001, build, start dev server | Navigate Cursor Browser to app URL |
