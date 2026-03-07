@@ -13,7 +13,7 @@ When the user says **runapp** or **restartall**, do the following. The same rebu
 
 1. Run `npm run runapp` (rebuilds the app; starts the dev server only if neither port 3000 nor 3001 is in use; otherwise reuses the existing server).
 2. If the script printed "Dev server starting.", wait briefly (2–3 s) for the server to be ready.
-3. **Always use the existing Cursor Browser:** Call **cursor-ide-browser** MCP `browser_tabs` with `action: "list"`. If any tab's URL is the app (`http://localhost:3000` or `http://localhost:3001`, with or without path), use `browser_navigate` with **that same URL** to refresh. If no tab is on the app, use `browser_navigate` with `http://localhost:3000`; if that fails or the app is known to use 3001, use `http://localhost:3001`. Reuse the same tab; do not open a new tab. Do not tell the user to open a URL in their browser or relay any "port in use" / "open that URL" message.
+3. **Always use the existing Cursor Browser:** Call **cursor-ide-browser** MCP `browser_tabs` with `action: "list"`. If any tab's URL is the app (`http://localhost:3000` or `http://localhost:3001`), use `browser_navigate` with that origin and a cache-busting query (e.g. `?_=1` or `?_=1734567890`) so the latest build and build tooltip load. If no tab is on the app, use `browser_navigate` with `http://localhost:3000?_=1` (or 3001 if needed). Reuse the same tab. Do not tell the user to open a URL in their browser or relay any "port in use" / "open that URL" message.
 
 ## restartall
 

@@ -2,17 +2,18 @@
   "name": "blob",
   "private": true,
   "engines": {
-    "node": "20.x"
+    "node": "24.x"
   },
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "next build && node scripts/write-build-info.js",
     "start": "next start",
     "generate-icons": "node scripts/generate-icons.js",
     "sync-blobby-assets": "node scripts/sync-blobby-assets.js",
     "runapp": "node scripts/runapp.js",
     "restartall": "node scripts/restartall.js",
-    "pushme": "node scripts/pushme.js"
+    "pushme": "node scripts/pushme.js",
+    "pushall": "node scripts/pushme.js"
   },
   "devDependencies": {
     "@types/node": "^25.3.5",

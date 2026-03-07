@@ -1,13 +1,13 @@
 ---
-description: Command "pushme" — commit and push to current branch (or main)
+description: Commands "pushme" and "pushall" — commit and push to current branch (or main)
 alwaysApply: true
 ---
 
-# pushme command
+# pushme and pushall commands
 
-When the user says **pushme**:
+**pushall** is an alias for **pushme**. When the user says **pushme** or **pushall**:
 
-1. Run `npm run pushme` to commit and push to the current branch (uses **main** if not on a branch, e.g. detached HEAD).
-2. If the user provided a commit message (e.g. "pushme fix login"), run `npm run pushme -- "fix login"` so the message is used instead of the default "Update".
+1. Run `npm run pushme` (or `npm run pushall`) to commit and push to the current branch (uses **main** if not on a branch, e.g. detached HEAD).
+2. If the user provided a commit message (e.g. "pushme fix login" or "pushall fix login"), run `npm run pushme -- "fix login"` so the message is used instead of the default "Update".
 
 The script stages all changes, commits with the given or default message, and pushes to `origin` for the current branch.

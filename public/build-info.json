@@ -1,4 +1,6 @@
 {
+  "buildNumber": 1,
+  "buildTime": "2026-03-07T21:59:09.096Z",
   "version": "1.0.0",
   "updates": [
     "Build tooltip now updates after runapp without restarting the dev server.",

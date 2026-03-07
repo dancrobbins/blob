@@ -1,38 +1,43 @@
 ---
-description: After every feature or bug fix, rebuild and refresh in existing Cursor Browser (mandatory)
+description: After every user-facing change, rebuild, update build info, and refresh Cursor Browser (mandatory)
 alwaysApply: true
 ---
 
-# Post-feature/bug rebuild and refresh (mandatory)
+# Post-change rebuild and refresh (mandatory)
 
 **This rule is mandatory. You must perform these steps every time. Do not skip, summarize, or defer to the user.**
 
-After completing any feature or fixing any bug, before saying the work is "done" or "complete":
+After **any user-facing change** (including features, bug fixes, copy changes, and UI tweaks), before saying the work is "done" or "complete":
 
-## Required steps (do all three, in order)
+## 1. Update build info so this change produces a new build
 
-1. **Run the runapp script**
-   - In the project root, run: `npm run runapp`
-   - This rebuilds the app and reuses the existing dev server (or starts it only if ports 3000 and 3001 are free). Do not start a second dev server manually.
-   - Wait for the command to finish. If it printed "Dev server starting.", wait 2–3 seconds for the server to be ready.
+- Edit **`version.json`**: add a new entry to the **`updates`** array with a short, plain-English description of what changed (e.g. "Removed the word Build from the main menu section.", "Fixed login button on mobile.", "Added Duplicate/Delete to blob menu.").
+- Do this for **every user-facing change**, including small copy or UI tweaks. This causes the next build to be treated as a new build and keeps the build tooltip (main menu) accurate.
 
-2. **List Cursor Browser tabs**
-   - Call the **cursor-ide-browser** MCP tool `browser_tabs` with `action: "list"` to get open tabs and their URLs.
+## 2. Run runapp (new build + dev server)
 
-3. **Refresh the app in the existing Cursor Browser**
-   - If any tab's URL is the app (`http://localhost:3000` or `http://localhost:3001`, with or without path): call `browser_navigate` with **that exact URL** to refresh that tab.
-   - If no tab is on the app: call `browser_navigate` with `http://localhost:3000`. If the app does not load (e.g. it runs on 3001), use `http://localhost:3001`.
-   - Reuse the existing tab; do not open a new tab unless there is no existing tab. Do not tell the user to open a URL in their browser.
+- In the project root, run: **`npm run runapp`**
+- This runs a full build (including writing build-info from `version.json`) and either reuses the existing dev server on port 3000/3001 or starts one if none is running.
+- Wait for the command to finish. If it printed "Dev server starting.", wait 2–3 seconds for the server to be ready.
+
+## 3. List Cursor Browser tabs
+
+- Call the **cursor-ide-browser** MCP tool **`browser_tabs`** with **`action: "list"`** to get open tabs and their URLs.
+
+## 4. Refresh the app tab so the existing Cursor Browser shows the update
+
+- If any tab's URL is the app (`http://localhost:3000` or `http://localhost:3001`, with or without path): call **`browser_navigate`** with that same URL plus a **cache-busting query param** (e.g. `http://localhost:3001/?_=1734567890123` using `Date.now()` or a short timestamp). This forces a full reload so the app and build tooltip show the latest build **without the user doing anything**.
+- If no tab is on the app: call **`browser_navigate`** with `http://localhost:3000?_=...` (or 3001 if 3000 is in use). Prefer reusing an existing tab; do not ask the user to open the URL.
 
 ## When this applies
 
-- After implementing or completing a feature (every time).
-- After fixing a bug, including small fixes (every time).
+- After **any user-facing change**: feature, bug fix, copy edit, UI tweak, or config change that affects what the user sees or how the app behaves.
 - Before you say the work is "done," "complete," or "ready."
 
 ## Hardening
 
-- Treat "feature completed" and "bug fixed" as triggers: **no exceptions.** Perform the three steps above as part of closing out the task.
-- Do not assume the user will rebuild or refresh manually.
+- **Every user-facing change** triggers this flow; no exceptions. Perform all steps as part of closing out the task.
+- Do not assume the user will run runapp or refresh the browser. The agent must run runapp and refresh the app tab so the Cursor Browser **automatically** shows the update.
 - Do not skip the browser steps because "the user can refresh" or "the build succeeded."
-- If the build fails, fix the build and then still perform the browser refresh once the build succeeds.
+- If the build fails, fix the build (and fix or revert `version.json` if needed), then run runapp again and perform the browser refresh.
+- Always use a cache-busting query param on the refresh URL so the loaded page reflects the new build.

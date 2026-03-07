@@ -16,6 +16,7 @@ const SELECTION_PADDING = 4;
 const MIN_SCALE = 0.25;
 const MAX_SCALE = 3;
 const WHEEL_ZOOM_SENSITIVITY = 0.002;
+const HEADER_HEIGHT = 52;
 
 type Bounds = { left: number; top: number; width: number; height: number };
 
@@ -60,7 +61,7 @@ function screenToWorld(
 ) {
   return {
     x: (screenX - panX) / s,
-    y: (screenY - panY) / s,
+    y: (screenY - HEADER_HEIGHT - panY) / s,
   };
 }
 
@@ -91,11 +92,6 @@ export default function Home() {
   const [pan, setPan] = useState({ x: 0, y: 0 });
   const [scale, setScale] = useState(1);
   const [isPanning, setIsPanning] = useState(false);
-
-  useEffect(() => {
-    panRef.current = pan;
-    scaleRef.current = scale;
-  }, [pan, scale]);
 
   const visibleBlobs = blobs.filter((b) => !b.hidden);
 
@@ -182,10 +178,13 @@ export default function Home() {
       if (last !== null) {
         const scaleFactor = distance / last.distance;
         const newScale = Math.min(MAX_SCALE, Math.max(MIN_SCALE, s * scaleFactor));
-        setPan({
+        const newPan = {
           x: centerX - ((last.centerX - p.x) / s) * newScale,
-          y: centerY - ((last.centerY - p.y) / s) * newScale,
-        });
+          y: centerY - HEADER_HEIGHT - ((last.centerY - HEADER_HEIGHT - p.y) / s) * newScale,
+        };
+        panRef.current = newPan;
+        scaleRef.current = newScale;
+        setPan(newPan);
         setScale(newScale);
       }
       lastPinchRef.current = { distance, centerX, centerY };
@@ -200,7 +199,11 @@ export default function Home() {
       setIsPanning(true);
     }
     if (isPanningRef.current) {
-      setPan((prev) => ({ x: prev.x + dx, y: prev.y + dy }));
+      setPan((prev) => {
+        const next = { x: prev.x + dx, y: prev.y + dy };
+        panRef.current = next;
+        return next;
+      });
       dragStart.current = { x: e.clientX, y: e.clientY };
       return;
     }
@@ -282,19 +285,16 @@ export default function Home() {
 
   const handleWheel = useCallback((e: WheelEvent) => {
     e.preventDefault();
-    const inner = canvasInnerRef.current;
-    if (!inner) return;
-    // Use the transformed element's actual rect so zoom is about the point under the cursor
-    const rect = inner.getBoundingClientRect();
-    const currentScale = scaleRef.current;
+    const p = panRef.current;
+    const s = scaleRef.current;
     const delta = -e.deltaY * WHEEL_ZOOM_SENSITIVITY;
-    const newScale = Math.min(MAX_SCALE, Math.max(MIN_SCALE, currentScale * (1 + delta)));
-    // World point under cursor: (cursor - inner's top-left) / scale
-    const worldX = (e.clientX - rect.left) / currentScale;
-    const worldY = (e.clientY - rect.top) / currentScale;
-    // New pan so that (worldX, worldY) stays under the cursor at newScale
+    const newScale = Math.min(MAX_SCALE, Math.max(MIN_SCALE, s * (1 + delta)));
+    // World point under cursor — account for the header offset
+    const worldX = (e.clientX - p.x) / s;
+    const worldY = (e.clientY - HEADER_HEIGHT - p.y) / s;
+    // New pan keeps that world point fixed under the cursor
     const newPanX = e.clientX - worldX * newScale;
-    const newPanY = e.clientY - worldY * newScale;
+    const newPanY = e.clientY - HEADER_HEIGHT - worldY * newScale;
     panRef.current = { x: newPanX, y: newPanY };
     scaleRef.current = newScale;
     setPan({ x: newPanX, y: newPanY });

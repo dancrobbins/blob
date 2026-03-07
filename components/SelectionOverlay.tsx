@@ -23,6 +23,12 @@ export function SelectionOverlay({
   const [menuOpen, setMenuOpen] = useState(false);
 
   useEffect(() => {
+    const closeMenus = () => setMenuOpen(false);
+    window.addEventListener("blob:close-menus", closeMenus);
+    return () => window.removeEventListener("blob:close-menus", closeMenus);
+  }, []);
+
+  useEffect(() => {
     if (!menuOpen) return;
     const close = (e: MouseEvent) => {
       if (menuRef.current && !menuRef.current.contains(e.target as Node)) {

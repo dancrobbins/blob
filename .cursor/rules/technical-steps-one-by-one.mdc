@@ -1,0 +1,18 @@
+---
+description: Give technical steps one-by-one in plain English, especially for third-party sites
+alwaysApply: true
+---
+
+# Technical steps: one-by-one, plain English
+
+When the user needs a list of **technical steps** (e.g. setup, config, deployment, or using a third-party site like Supabase, Vercel, Google Cloud):
+
+1. **One step at a time** — Give a single step. Wait for the user to reply (e.g. "Done" or "Next") before giving the next step. Do not dump the full list unless the user explicitly asks for "all steps" in one message.
+
+2. **Plain English** — Use simple, non-jargon language. Avoid unexplained acronyms or code-heavy wording when a plain sentence works.
+
+3. **Third-party sites** — For steps on external sites (Supabase dashboard, Vercel, Google Console, etc.), be extra clear: name the site, what to click (exact labels when possible), and what to enter or choose.
+
+4. **End each step with a prompt** — e.g. "Reply **Done** when you're there" or "Reply **Next** when that's set" so the user knows when to continue.
+
+If the user says they want "all the steps" or "the full list," you may then provide the complete sequence in one message, still in plain English and in order.

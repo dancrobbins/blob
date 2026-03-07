@@ -3,6 +3,7 @@
 import React, { useState, useRef, useEffect } from "react";
 import { useBlobsContext } from "@/contexts/BlobsContext";
 import { APP_VERSION, BUILD_TIME, BUILD_UPDATES } from "@/lib/constants";
+import type { BuildInfo } from "@/lib/types";
 import { supabase } from "@/lib/supabase";
 import { BLOBBY_GRID_COLS, BLOBBY_GRID_ROWS } from "@/lib/types";
 import styles from "./Header.module.css";
@@ -24,12 +25,35 @@ export function Header({
   useEffect(() => {
     anyMenuOpenRef.current = menuOpen || accountOpen;
   }, [menuOpen, accountOpen, anyMenuOpenRef]);
+
+  useEffect(() => {
+    const closeMenus = () => {
+      setMenuOpen(false);
+      setAccountOpen(false);
+      setBuildTooltipOpen(false);
+    };
+    window.addEventListener("blob:close-menus", closeMenus);
+    return () => window.removeEventListener("blob:close-menus", closeMenus);
+  }, []);
   const [userAvatar, setUserAvatar] = useState<string | null>(null);
   const [signInError, setSignInError] = useState<string | null>(null);
   const [buildTooltipOpen, setBuildTooltipOpen] = useState(false);
+  const [buildInfo, setBuildInfo] = useState<BuildInfo | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const accountRef = useRef<HTMLDivElement>(null);
   const buildTooltipRef = useRef<HTMLDivElement>(null);
+
+  // Fetch build info at runtime so it updates after runapp without restarting the dev server
+  useEffect(() => {
+    fetch("/api/build-info")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data: BuildInfo | null) => {
+        if (data && typeof data.buildTime === "string" && Array.isArray(data.updates)) {
+          setBuildInfo(data);
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   const readAvatarFromUser = (user: { user_metadata?: Record<string, unknown>; raw_user_meta_data?: Record<string, unknown> } | null) => {
     if (!user) return null;
@@ -81,16 +105,21 @@ export function Header({
     return () => document.removeEventListener("click", close);
   }, [buildTooltipOpen]);
 
+  const buildNumberDisplay = buildInfo?.buildNumber ?? 0;
   const buildDateLocal = (() => {
+    const raw = buildInfo?.buildTime ?? BUILD_TIME;
     try {
-      return new Date(BUILD_TIME).toLocaleString(undefined, {
+      return new Date(raw).toLocaleString(undefined, {
         dateStyle: "medium",
         timeStyle: "short",
       });
     } catch {
-      return BUILD_TIME;
+      return typeof raw === "string" ? raw : BUILD_TIME;
     }
   })();
+  const buildLabel = buildNumberDisplay > 0 ? `#${buildNumberDisplay} · ${buildDateLocal}` : buildDateLocal;
+
+  const buildUpdatesList = (buildInfo?.updates?.length ? buildInfo.updates : BUILD_UPDATES) as string[];
 
   const setTheme = (theme: "light" | "dark") => {
     setPreferences((p) => ({ ...p, theme }));
@@ -223,7 +252,6 @@ export function Header({
               <span className={styles.menuValue}>{APP_VERSION}</span>
             </div>
             <div className={styles.menuSection}>
-              <span className={styles.menuLabel}>Build</span>
               <div
                 ref={buildTooltipRef}
                 className={styles.buildTooltipWrap}
@@ -235,21 +263,26 @@ export function Header({
                   className={styles.buildTooltipTrigger}
                   onClick={() => setBuildTooltipOpen((o) => !o)}
                   aria-expanded={buildTooltipOpen}
-                  aria-label="Build date; tap or hover for updates in this build"
+                  aria-label="Build number and date; tap or hover for updates in this build"
                 >
-                  {buildDateLocal}
+                  {buildLabel}
                 </button>
-                {buildTooltipOpen && BUILD_UPDATES.length > 0 && (
+                {buildTooltipOpen && (buildNumberDisplay > 0 || buildUpdatesList.length > 0) && (
                   <div
                     className={styles.buildTooltip}
                     role="tooltip"
                     id="build-updates-tooltip"
                   >
-                    <ul className={styles.buildTooltipList}>
-                      {BUILD_UPDATES.map((line, i) => (
-                        <li key={i}>{line}</li>
-                      ))}
-                    </ul>
+                    {buildNumberDisplay > 0 && (
+                      <p className={styles.buildTooltipHeading}>Build #{buildNumberDisplay}</p>
+                    )}
+                    {buildUpdatesList.length > 0 && (
+                      <ul className={styles.buildTooltipList}>
+                        {buildUpdatesList.map((line, i) => (
+                          <li key={i}>{line}</li>
+                        ))}
+                      </ul>
+                    )}
                   </div>
                 )}
               </div>

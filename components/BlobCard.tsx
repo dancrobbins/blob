@@ -82,6 +82,12 @@ export function BlobCard({
   }, [menuOpen]);
 
   useEffect(() => {
+    const closeMenus = () => setMenuOpen(false);
+    window.addEventListener("blob:close-menus", closeMenus);
+    return () => window.removeEventListener("blob:close-menus", closeMenus);
+  }, []);
+
+  useEffect(() => {
     if (!autoFocus || !contentRef.current) return;
     const el = contentRef.current;
     el.focus();
@@ -204,14 +210,16 @@ export function BlobCard({
     el.innerText = blob.content || BULLET;
   }, [blob.id]);
 
+  const DRAG_HANDLE_OFFSET_PX = 32;
+
   return (
     <div
       ref={cardRef}
       data-blob-card
       data-blob-id={blob.id}
-      className={styles.card}
+      className={styles.wrapper}
       style={{
-        left: blob.x,
+        left: blob.x - DRAG_HANDLE_OFFSET_PX,
         top: blob.y,
       }}
       onPointerDown={handlePointerDown}
@@ -226,17 +234,18 @@ export function BlobCard({
       >
         ⋮⋮
       </div>
-      <div
-        ref={contentRef}
-        className={styles.content}
-        contentEditable
-        suppressContentEditableWarning
-        onInput={handleInput}
-        onKeyDown={handleKeyDown}
-        onFocus={handleFocus}
-        onBlur={handleBlur}
-      />
-      <div className={styles.menuWrap} ref={menuRef}>
+      <div className={styles.card}>
+        <div
+          ref={contentRef}
+          className={styles.content}
+          contentEditable
+          suppressContentEditableWarning
+          onInput={handleInput}
+          onKeyDown={handleKeyDown}
+          onFocus={handleFocus}
+          onBlur={handleBlur}
+        />
+        <div className={styles.menuWrap} ref={menuRef}>
         <button
           type="button"
           className={styles.menuButton}
@@ -277,6 +286,7 @@ export function BlobCard({
             </button>
           </div>
         )}
+        </div>
       </div>
     </div>
   );

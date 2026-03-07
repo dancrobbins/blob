@@ -17,6 +17,9 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 
+# Build state (build number increments per environment)
+.build-state.json
+
 # Misc
 .DS_Store
 *.pem
