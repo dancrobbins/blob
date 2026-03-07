@@ -40,8 +40,12 @@
     0 0 0 2px var(--selection-cue, rgba(100, 180, 255, 0.4));
 }
 
-.dragHandle {
+.controlWrap {
   flex-shrink: 0;
+  overflow: visible;
+}
+
+.dragHandle {
   width: 24px;
   height: 24px;
   display: flex;

@@ -26,3 +26,15 @@ export function savePreferences(prefs: Preferences): void {
     // ignore
   }
 }
+
+/** Merge cloud preferences into current; returns new Preferences. Used when loading from account. */
+export function mergeCloudPreferences(
+  current: Preferences,
+  cloud: Partial<Preferences> | null
+): Preferences {
+  if (!cloud) return current;
+  return {
+    theme: cloud.theme ?? current.theme,
+    blobbyColor: cloud.blobbyColor ?? (cloud as { characterColor?: string }).characterColor ?? current.blobbyColor,
+  };
+}

@@ -6,7 +6,8 @@
  * so the Next.js app serves the latest character sprites, color schemes, blob, and icons.
  *
  * 1. Runs generate-icons.js to regenerate icons from assets/blob.png
- * 2. Copies assets/ → public/assets/ for blob, character color schemes, expressions, icons
+ * 2. Runs generate-character-color-schemes.js so menu grid matches BLOBBY_COLOR_NAMES
+ * 3. Copies assets/ → public/assets/ for blob, character color schemes, expressions, icons
  */
 
 const fs = require("fs");
@@ -60,8 +61,13 @@ function main() {
   execSync("node scripts/generate-icons.js", { cwd: root, stdio: "inherit" });
   console.log("");
 
-  // 2. Sync assets → public/assets
-  console.log("2. Syncing assets/ → public/assets/");
+  // 2. Generate character color schemes so menu grid matches selection order
+  console.log("2. Generating character color schemes (menu grid = BLOBBY_COLOR_NAMES order)");
+  execSync("node scripts/generate-character-color-schemes.js", { cwd: root, stdio: "inherit" });
+  console.log("");
+
+  // 3. Sync assets → public/assets
+  console.log("3. Syncing assets/ → public/assets/");
   mkdirRecursive(PUBLIC_ASSETS);
 
   copyFile(

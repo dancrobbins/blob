@@ -1,4 +1,4 @@
-import type { Blob } from "./types";
+import type { Blob, Preferences } from "./types";
 import { supabase } from "./supabase";
 
 const BLOB_STORAGE_KEY = "blob_notes_anonymous";
@@ -9,8 +9,11 @@ const DEBOUNCE_MS = 500;
 /** Debounce for saving to cloud after move (SET_POSITION). */
 export const POSITION_SAVE_DEBOUNCE_MS = 300;
 
-/** How often to poll cloud and merge into local (e.g. other device edits). */
-export const CLOUD_POLL_INTERVAL_MS = 30_000;
+/** How often to poll cloud and merge into local (cross-tab / other device sync). */
+export const CLOUD_POLL_INTERVAL_MS = 15_000;
+
+/** Delay before first poll after login (so initial load can finish first). */
+export const CLOUD_POLL_INITIAL_DELAY_MS = 2_000;
 
 let saveTimeout: ReturnType<typeof setTimeout> | null = null;
 
@@ -63,6 +66,7 @@ export function setMergedFlag(userId: string): void {
 
 export async function fetchUserBlobs(userId: string): Promise<{
   blobs: Blob[];
+  preferences: Partial<Preferences> | null;
   updatedAt: string | null;
 } | null> {
   if (!supabase) return null;
@@ -72,10 +76,12 @@ export async function fetchUserBlobs(userId: string): Promise<{
     .eq("user_id", userId)
     .single();
   if (error || !data) return null;
-  const dataObj = data.data as { notes?: Blob[] } | null;
+  const dataObj = data.data as { notes?: Blob[]; preferences?: Partial<Preferences> } | null;
   const blobs = Array.isArray(dataObj?.notes) ? dataObj.notes : [];
+  const preferences = dataObj?.preferences ?? null;
   return {
     blobs,
+    preferences: preferences && (preferences.theme != null || preferences.blobbyColor != null) ? preferences : null,
     updatedAt: data.updated_at ?? null,
   };
 }
@@ -83,7 +89,7 @@ export async function fetchUserBlobs(userId: string): Promise<{
 export async function upsertUserBlobs(
   userId: string,
   blobs: Blob[],
-  preferences?: Record<string, unknown> | { theme?: string; blobbyColor?: string }
+  preferences?: Partial<Preferences>
 ): Promise<boolean> {
   if (!supabase) return false;
   const { error } = await supabase.from("user_notes").upsert(
@@ -121,7 +127,7 @@ export function mergeLocalAndCloudBlobs(
 export function debouncedSaveToCloud(
   userId: string,
   blobs: Blob[],
-  preferences: Record<string, unknown> | { theme?: string; blobbyColor?: string }
+  preferences: Partial<Preferences>
 ): void {
   if (saveTimeout) clearTimeout(saveTimeout);
   saveTimeout = setTimeout(() => {

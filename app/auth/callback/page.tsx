@@ -31,13 +31,32 @@ function AuthCallbackInner() {
       const { data: { session } } = await client.auth.getSession();
       if (session) {
         setStatus("ok");
-        window.location.href = "/";
+        window.location.replace("/");
         return;
+      }
+
+      // If provider redirected with tokens in the hash (e.g. to wrong URL), set session and clean URL
+      const hash = typeof window !== "undefined" ? window.location.hash?.replace(/^#/, "") : "";
+      if (hash) {
+        const hashParams = new URLSearchParams(hash);
+        const accessToken = hashParams.get("access_token");
+        const refreshToken = hashParams.get("refresh_token");
+        if (accessToken && refreshToken) {
+          const { error: setError } = await client.auth.setSession({
+            access_token: accessToken,
+            refresh_token: refreshToken,
+          });
+          if (!setError) {
+            setStatus("ok");
+            window.location.replace("/");
+            return;
+          }
+        }
       }
 
       const code = searchParams.get("code") ?? getCodeFromUrl();
       if (!code) {
-        window.location.href = "/";
+        window.location.replace("/");
         return;
       }
 
@@ -58,7 +77,7 @@ function AuthCallbackInner() {
           }, 2000);
         } else {
           setStatus("ok");
-          window.location.href = "/";
+          window.location.replace("/");
         }
       } catch {
         setStatus("error");

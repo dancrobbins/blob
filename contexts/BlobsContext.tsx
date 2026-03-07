@@ -25,8 +25,9 @@ import {
   clearSaveTimeout,
   POSITION_SAVE_DEBOUNCE_MS,
   CLOUD_POLL_INTERVAL_MS,
+  CLOUD_POLL_INITIAL_DELAY_MS,
 } from "@/lib/persistence";
-import { loadPreferences, savePreferences } from "@/lib/preferences-store";
+import { loadPreferences, savePreferences, mergeCloudPreferences } from "@/lib/preferences-store";
 import type { Preferences } from "@/lib/types";
 import { supabase } from "@/lib/supabase";
 
@@ -105,13 +106,19 @@ export function BlobsProvider({ children }: { children: ReactNode }) {
     return () => subscription.unsubscribe();
   }, []);
 
-  // First-time merge when user logs in; then use cloud as source when loaded
+  // First-time merge when user logs in; then use cloud as source when loaded. Apply account preferences when present.
   useEffect(() => {
     if (!userId || !supabase) return;
     const run = async () => {
       const merged = getMergedFlag(userId);
       const cloud = await fetchUserBlobs(userId);
       const current = loadBlobsFromStorage();
+      if (cloud?.preferences) {
+        const currentPrefs = loadPreferences();
+        const mergedPrefs = mergeCloudPreferences(currentPrefs, cloud.preferences);
+        setPreferencesState(mergedPrefs);
+        savePreferences(mergedPrefs);
+      }
       if (!merged && cloud) {
         const mergedBlobs = mergeLocalAndCloudBlobs(
           current,
@@ -159,10 +166,11 @@ export function BlobsProvider({ children }: { children: ReactNode }) {
     debouncedSaveToCloud(userId, blobs, preferences);
   }, [blobs, userId, preferences, isLoading]);
 
-  // Poll cloud periodically and merge (e.g. edits from another device)
+  // Poll cloud when logged in: first poll after a short delay, then on a cadence (cross-tab / other device sync)
   useEffect(() => {
     if (!userId || !supabase) return;
-    const interval = setInterval(async () => {
+
+    const poll = async () => {
       const cloud = await fetchUserBlobs(userId);
       if (!cloud) return;
       const current = blobsRef.current;
@@ -171,8 +179,14 @@ export function BlobsProvider({ children }: { children: ReactNode }) {
         dispatchReducer({ type: "SET_BLOBS", payload: merged });
         saveBlobsToStorage(merged);
       }
-    }, CLOUD_POLL_INTERVAL_MS);
-    return () => clearInterval(interval);
+    };
+
+    const initialTimer = setTimeout(poll, CLOUD_POLL_INITIAL_DELAY_MS);
+    const interval = setInterval(poll, CLOUD_POLL_INTERVAL_MS);
+    return () => {
+      clearTimeout(initialTimer);
+      clearInterval(interval);
+    };
   }, [userId]);
 
   const value: BlobsContextValue = {

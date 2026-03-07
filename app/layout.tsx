@@ -3,6 +3,7 @@ import "./globals.css";
 import { BlobsProvider } from "@/contexts/BlobsContext";
 import { ThemeApplied } from "@/components/ThemeApplied";
 import { TypeScriptErrorsDebug } from "@/components/TypeScriptErrorsDebug";
+import { AuthHashRedirect } from "@/components/AuthHashRedirect";
 
 export const metadata: Metadata = {
   title: "blob",
@@ -26,6 +27,7 @@ export default function RootLayout({
       </head>
       <body>
         <BlobsProvider>
+          <AuthHashRedirect />
           <ThemeApplied>{children}</ThemeApplied>
           <TypeScriptErrorsDebug />
         </BlobsProvider>

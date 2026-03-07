@@ -212,7 +212,10 @@ export function BlobCard({
     el.innerText = blob.content || BULLET;
   }, [blob.id]);
 
-  const DRAG_HANDLE_OFFSET_PX = 32;
+  const DRAG_HANDLE_WIDTH = 24;
+  const GAP_PX = 8;
+  const invScale = 1 / scale;
+  const gapWorld = GAP_PX / scale;
 
   return (
     <div
@@ -221,8 +224,9 @@ export function BlobCard({
       data-blob-id={blob.id}
       className={styles.wrapper}
       style={{
-        left: blob.x - DRAG_HANDLE_OFFSET_PX,
+        left: blob.x - DRAG_HANDLE_WIDTH - gapWorld,
         top: blob.y,
+        gap: gapWorld,
       }}
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}
@@ -230,11 +234,21 @@ export function BlobCard({
       onPointerLeave={handlePointerUp}
     >
       <div
-        data-drag-handle
-        className={styles.dragHandle}
-        aria-hidden
+        className={styles.controlWrap}
+        style={{
+          width: 24,
+          height: 24,
+          transform: `scale(${invScale})`,
+          transformOrigin: "0 0",
+        }}
       >
-        ⋮⋮
+        <div
+          data-drag-handle
+          className={styles.dragHandle}
+          aria-hidden
+        >
+          ⋮⋮
+        </div>
       </div>
       <div className={styles.card} data-selected={isSelected || undefined}>
         <div
@@ -247,7 +261,14 @@ export function BlobCard({
           onFocus={handleFocus}
           onBlur={handleBlur}
         />
-        <div className={styles.menuWrap} ref={menuRef}>
+        <div
+          className={styles.menuWrap}
+          ref={menuRef}
+          style={{
+            transform: `scale(${invScale})`,
+            transformOrigin: "100% 0",
+          }}
+        >
         <button
           type="button"
           className={styles.menuButton}

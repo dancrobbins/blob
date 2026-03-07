@@ -1,58 +1,88 @@
 ---
-description: MANDATORY - After every code change: update version.json, run runapp, fix build if broken, refresh Cursor Browser - ALL IN THE SAME TURN. Never stop after a build failure. Never stop after only editing code.
+description: MANDATORY - After every code change: update version.json + changelog.md, run runapp, fix build if broken, refresh Cursor Browser - ALL IN THE SAME TURN.
 alwaysApply: true
 ---
 
 # Post-change rebuild and refresh (mandatory)
 
-**This rule is mandatory. You must perform all four steps below in the same turn as your code changes. The task is NOT complete until all four steps are done successfully. Do not skip, summarize, or defer to the user.**
+**This rule is mandatory. All four steps must be completed in the same turn as the code change. The task is NOT done until all four steps succeed.**
 
-**Completion checklist (all required in the same response as the code change):**  
-□ 1. Edit `version.json` (add to `updates`)  
-□ 2. Run `npm run runapp` — if it FAILS, fix the build and run it again. Keep going until it succeeds.  
-□ 3. Call `browser_tabs` with `action: "list"`  
-□ 4. Call `browser_navigate` with app URL + cache-busting param  
+**Completion checklist:**
+□ 1. Edit `version.json` (clear old updates, add only what changed THIS session)  
+□ 2. Append to `changelog.md` (durable history — never clear this)  
+□ 3. Run `npm run runapp` — fix build errors and re-run until it exits 0  
+□ 4. Call `browser_tabs` → `browser_navigate` with app URL + cache-busting param  
 
-**STOP CONDITIONS — these are NOT acceptable ways to end a turn:**
-- ❌ "Here's a summary of changes." — without running runapp and refreshing the browser.
+---
+
+## STOP CONDITIONS — these are NOT acceptable ways to end a turn
+
+- ❌ "Here's a summary of changes." — without completing steps 1–4.
 - ❌ "The build failed." — without fixing the build and re-running runapp.
-- ❌ "There was a build error." — without resolving it and completing steps 2–4.
 - ❌ Saying the feature is done while the browser still shows the old app.
+- ❌ Leaving `version.json` `updates` unchanged from a previous session.
+- ❌ Leaving stale bullets in `version.json` that don't match this session's changes.
 
-If the build fails, you must fix the issue immediately (do not ask the user for help unless genuinely blocked) and run runapp again. Do not end the turn until runapp succeeds and the browser tab has been refreshed.
+---
 
-After **any user-facing change** (including features, bug fixes, copy changes, and UI tweaks), **in the same turn** before saying the work is "done" or "complete":
+## Step 1 — Update `version.json` (current-build bullets only)
 
-## 1. Update build info so this change produces a new build
+**`version.json` holds only what changed in the current build session. It must be rewritten each session.**
 
-- Edit **`version.json`**: add a new entry to the **`updates`** array with a short, plain-English description of what changed.
-- Do this for **every user-facing change**, including small copy or UI tweaks.
+Rules:
+- **Clear the existing `updates` array entirely.** Do not keep bullets from a previous session.
+- Add **only** the changes you made in this turn — written as short, plain-English sentences a non-developer can read.
+- Keep bullets specific: "Fixed login button not responding on mobile" not "Fixed bug."
+- Each bullet describes one change, ~1 sentence.
 
-## 2. Run runapp (new build + dev server) — fix failures before continuing
+Example — what to write after fixing a crash and adding a feature:
+```json
+{
+  "version": "1.0.0",
+  "updates": [
+    "Fixed crash when opening the menu with no blobs present.",
+    "Added confirmation dialog before deleting a blob."
+  ]
+}
+```
 
-- In the project root, run: **`npm run runapp`**
-- Wait for the command to finish.
-- **If runapp fails:** diagnose the build error, fix it, and run `npm run runapp` again. Repeat until the build succeeds. Do NOT move on to steps 3–4 until runapp exits successfully.
-- If it printed "Dev server starting.", wait 2–3 seconds for the server to be ready.
+**WRONG** — do not leave previous bullets or write vague entries:
+```json
+{
+  "updates": [
+    "Build tooltip now updates after runapp without restarting the dev server.",
+    "Persist character selection with user account.",
+    "Fixed some stuff."
+  ]
+}
+```
 
-## 3. List Cursor Browser tabs
+---
 
-- Call the **cursor-ide-browser** MCP tool **`browser_tabs`** with **`action: "list"`** to get open tabs and their URLs.
+## Step 2 — Append to `changelog.md` (never clear)
 
-## 4. Refresh the app tab so the existing Cursor Browser shows the update
+- Open `changelog.md` and append the same bullets under a `## YYYY-MM-DD` date heading.
+- This is the permanent history — never delete existing entries.
 
-- If any tab's URL is the app (`http://localhost:3000` or `http://localhost:3001`, with or without path): call **`browser_navigate`** with that same URL plus a **cache-busting query param** (e.g. `http://localhost:3001/?_=1734567890123` using `Date.now()` or a short timestamp).
-- If no tab is on the app: call **`browser_navigate`** with `http://localhost:3000?_=...` (or 3001 if 3000 is in use). Do not ask the user to open the URL.
+---
+
+## Step 3 — Run runapp and fix failures
+
+- Run: `npm run runapp`
+- If it fails: diagnose the error, fix it, run again. Repeat until exit code 0.
+- If it printed "Dev server starting.", wait 2–3 seconds before the browser step.
+
+---
+
+## Step 4 — Refresh the app in the existing Cursor Browser
+
+- Call `browser_tabs` with `action: "list"`.
+- If any tab URL is `http://localhost:3000` or `http://localhost:3001` (with or without path): call `browser_navigate` with that URL + a cache-busting query param (e.g. `?_=1741234567`).
+- If no app tab exists: navigate to `http://localhost:3000?_=...` (or 3001 if 3000 fails). Do not tell the user to open the URL.
+
+---
 
 ## When this applies
 
-- After **any user-facing change**: feature, bug fix, copy edit, UI tweak, or config change.
+- After **any user-facing change**: feature, bug fix, copy edit, UI tweak, config.
 - Before you say the work is "done," "complete," or "ready."
-
-## Hardening
-
-- **Same turn, no exceptions:** Steps 1–4 must be executed in the **same response** as the code change.
-- **Build failures must be fixed in the same turn.** Never end a turn with a broken build. Fix the error and re-run runapp until it succeeds.
-- **Never assume the user will rebuild or refresh.** The agent runs runapp and calls browser_navigate so the Cursor Browser updates automatically.
-- **Running the build is not enough** — the open tab must be reloaded with a cache-busting URL.
-- Always use a cache-busting query param on the refresh URL.

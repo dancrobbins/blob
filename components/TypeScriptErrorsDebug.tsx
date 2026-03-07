@@ -44,12 +44,20 @@ export function TypeScriptErrorsDebug() {
         signal: ac.signal,
       });
       clearTimeout(timeoutId);
-      const data = await res.json();
-      setErrors(data.errors ?? []);
-      if (!res.ok) setFetchError(res.statusText || "Request failed");
+      let data: { errors?: TsErrorItem[] };
+      try {
+        data = await res.json();
+      } catch {
+        data = { errors: [] };
+      }
+      const nextErrors = Array.isArray(data.errors) ? data.errors : [];
+      setErrors(nextErrors);
+      if (!res.ok) {
+        setFetchError(res.statusText || "Request failed");
+      }
     } catch (e) {
       clearTimeout(timeoutId);
-      setErrors([]);
+      // Do not clear errors on fetch failure — keep previous TS errors so the red button still shows
       if (e instanceof Error && e.name === "AbortError") {
         setFetchError("Request timed out");
       } else {
@@ -76,15 +84,17 @@ export function TypeScriptErrorsDebug() {
   }, [errors]);
 
   const hasErrors = errors.length > 0;
-  const showButton = hasErrors;
+  const showRedButton = hasErrors;
+  const showCheckFailedButton = !!fetchError && !hasErrors;
+  const showAnyButton = showRedButton || showCheckFailedButton;
 
-  if (!showButton && !open) {
+  if (!showAnyButton && !open) {
     return null;
   }
 
   return (
     <>
-      {showButton && (
+      {showRedButton && (
         <button
           type="button"
           onClick={() => setOpen((o) => !o)}
@@ -105,7 +115,31 @@ export function TypeScriptErrorsDebug() {
             boxShadow: "0 2px 8px rgba(0,0,0,0.25)",
           }}
         >
-          Typescript errors
+          TypeScript errors
+        </button>
+      )}
+      {showCheckFailedButton && (
+        <button
+          type="button"
+          onClick={() => setOpen((o) => !o)}
+          aria-label="Could not check TypeScript errors"
+          style={{
+            position: "fixed",
+            left: 12,
+            bottom: 12,
+            zIndex: DEBUG_Z_INDEX,
+            padding: "8px 12px",
+            backgroundColor: "#c75a00",
+            color: "#fff",
+            border: "none",
+            borderRadius: 6,
+            fontSize: 13,
+            fontWeight: 600,
+            cursor: "pointer",
+            boxShadow: "0 2px 8px rgba(0,0,0,0.25)",
+          }}
+        >
+          Could not check TypeScript errors
         </button>
       )}
 
@@ -188,57 +222,65 @@ export function TypeScriptErrorsDebug() {
           >
             {loading ? (
               <span style={{ color: "var(--muted)" }}>Checking…</span>
-            ) : fetchError ? (
-              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                <span style={{ color: "var(--muted)" }}>{fetchError}</span>
-                <button
-                  type="button"
-                  onClick={() => fetchErrors()}
-                  style={{
-                    padding: "6px 12px",
-                    fontSize: 12,
-                    cursor: "pointer",
-                    alignSelf: "flex-start",
-                    backgroundColor: "var(--muted)",
-                    color: "var(--bg)",
-                    border: "none",
-                    borderRadius: 4,
-                  }}
-                >
-                  Retry
-                </button>
-              </div>
-            ) : errors.length === 0 ? (
-              <span style={{ color: "var(--muted)" }}>No TypeScript errors.</span>
             ) : (
-              errors.map((e, i) => (
-                <div
-                  key={i}
-                  style={{
-                    marginBottom: 8,
-                    paddingBottom: 8,
-                    borderBottom:
-                      i < errors.length - 1
-                        ? "1px solid var(--muted)"
-                        : "none",
-                  }}
-                >
-                  {e.file && (
-                    <div style={{ color: "var(--muted)", marginBottom: 2 }}>
-                      {e.file}
-                      {(e.line || e.column) && (
-                        <span> ({e.line}, {e.column})</span>
-                      )}
-                    </div>
-                  )}
-                  {e.code && (
-                    <span style={{ fontWeight: 600, marginRight: 6 }}>
-                      {e.code}
-                    </span>
-                  )}
-                  <span>{e.message || e.raw}</span>
-                </div>
-              ))
+              <>
+                {fetchError && (
+                  <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: errors.length > 0 ? 12 : 0 }}>
+                    <span style={{ color: "var(--muted)" }}>Could not check: {fetchError}</span>
+                    <button
+                      type="button"
+                      onClick={() => fetchErrors()}
+                      style={{
+                        padding: "6px 12px",
+                        fontSize: 12,
+                        cursor: "pointer",
+                        alignSelf: "flex-start",
+                        backgroundColor: "var(--muted)",
+                        color: "var(--bg)",
+                        border: "none",
+                        borderRadius: 4,
+                      }}
+                    >
+                      Retry
+                    </button>
+                  </div>
+                )}
+                {errors.length === 0 && !fetchError ? (
+                  <span style={{ color: "var(--muted)" }}>No TypeScript errors.</span>
+                ) : (errors.length > 0) ? (
+                  <>
+                    {fetchError && <div style={{ color: "var(--muted)", marginBottom: 6 }}>Previously loaded errors:</div>}
+                    {errors.map((e, i) => (
+                      <div
+                        key={i}
+                        style={{
+                          marginBottom: 8,
+                          paddingBottom: 8,
+                          borderBottom:
+                            i < errors.length - 1
+                              ? "1px solid var(--muted)"
+                              : "none",
+                        }}
+                      >
+                        {e.file && (
+                          <div style={{ color: "var(--muted)", marginBottom: 2 }}>
+                            {e.file}
+                            {(e.line || e.column) && (
+                              <span> ({e.line}, {e.column})</span>
+                            )}
+                          </div>
+                        )}
+                        {e.code && (
+                          <span style={{ fontWeight: 600, marginRight: 6 }}>
+                            {e.code}
+                          </span>
+                        )}
+                        <span>{e.message || e.raw}</span>
+                      </div>
+                    ))}
+                  </>
+                ) : null}
+              </>
             )}
           </div>
         </div>

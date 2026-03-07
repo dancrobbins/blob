@@ -9,6 +9,7 @@
     "build": "next build && node scripts/write-build-info.js",
     "start": "next start",
     "generate-icons": "node scripts/generate-icons.js",
+    "generate-character-color-schemes": "node scripts/generate-character-color-schemes.js",
     "sync-blobby-assets": "node scripts/sync-blobby-assets.js",
     "runapp": "node scripts/runapp.js",
     "restartall": "node scripts/restartall.js",

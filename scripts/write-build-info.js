@@ -6,6 +6,23 @@ const path = require("path");
 const { execSync } = require("child_process");
 
 const root = path.join(__dirname, "..");
+
+// Next.js emits server chunks to .next/server/chunks/ but webpack-runtime requires them
+// as ./<id>.js from .next/server/, so Node looks for .next/server/<id>.js. Copy chunk
+// files into server/ so production and deployed builds can load them.
+const serverDir = path.join(root, ".next", "server");
+const chunksDir = path.join(serverDir, "chunks");
+try {
+  if (fs.existsSync(chunksDir)) {
+    for (const name of fs.readdirSync(chunksDir)) {
+      if (name.endsWith(".js")) {
+        fs.copyFileSync(path.join(chunksDir, name), path.join(serverDir, name));
+      }
+    }
+  }
+} catch (_) {
+  // Non-fatal; build continues
+}
 const versionPath = path.join(root, "version.json");
 const statePath = path.join(root, ".build-state.json");
 const outPath = path.join(root, "public", "build-info.json");

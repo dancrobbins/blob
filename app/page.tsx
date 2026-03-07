@@ -8,6 +8,7 @@ import {
   SelectionOverlay,
   SelectionRect,
 } from "@/components/SelectionOverlay";
+import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { useBlobsContext } from "@/contexts/BlobsContext";
 import styles from "./page.module.css";
 
@@ -105,6 +106,7 @@ export default function Home() {
   const [pan, setPan] = useState({ x: 0, y: 0 });
   const [scale, setScale] = useState(1);
   const [isPanning, setIsPanning] = useState(false);
+  const [pendingDeleteIds, setPendingDeleteIds] = useState<string[] | null>(null);
 
   const visibleBlobs = blobs.filter((b) => !b.hidden);
 
@@ -164,14 +166,11 @@ export default function Home() {
       if (ids.length === 0) return;
       e.preventDefault();
       e.stopPropagation();
-      if (window.confirm("Are you sure?")) {
-        dispatch({ type: "DELETE_BLOBS", payload: ids });
-        setSelectedIds([]);
-      }
+      setPendingDeleteIds([...ids]);
     };
     document.addEventListener("keydown", handleKeyDown, true);
     return () => document.removeEventListener("keydown", handleKeyDown, true);
-  }, [dispatch]);
+  }, []);
 
   const handlePointerDown = useCallback(
     (e: React.PointerEvent) => {
@@ -483,6 +482,18 @@ export default function Home() {
       )}
 
       <Blobby />
+
+      {pendingDeleteIds && (
+        <ConfirmDialog
+          message={`Delete ${pendingDeleteIds.length} blob${pendingDeleteIds.length === 1 ? "" : "s"}?`}
+          onConfirm={() => {
+            dispatch({ type: "DELETE_BLOBS", payload: pendingDeleteIds });
+            setSelectedIds([]);
+            setPendingDeleteIds(null);
+          }}
+          onCancel={() => setPendingDeleteIds(null)}
+        />
+      )}
     </main>
   );
 }
