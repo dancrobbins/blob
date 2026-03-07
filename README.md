@@ -31,4 +31,4 @@ Tap anywhere to create a blob. Type bulleted lists, drag blobs around. Blobs per
 
 ## Version
 
-Edit `version.json` to bump the app version (shown in the hamburger menu). Build date/time is set at build time and shown in the user’s timezone.
+Edit `version.json` to bump the app version (shown in the Main menu). Build date/time is set at build time and shown in the user’s timezone.

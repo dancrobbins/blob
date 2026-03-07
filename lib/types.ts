@@ -5,6 +5,8 @@ export interface Blob {
   content: string;
   createdAt: string;
   updatedAt: string;
+  locked?: boolean;
+  hidden?: boolean;
 }
 
 export interface Preferences {

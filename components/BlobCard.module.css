@@ -2,6 +2,9 @@
   position: absolute;
   min-width: 180px;
   max-width: 320px;
+  display: flex;
+  align-items: flex-start;
+  gap: 0;
   background: var(--blob-bg, #fffef9);
   border: 1px solid var(--blob-border, rgba(0, 0, 0, 0.1));
   border-radius: 12px;
@@ -18,11 +21,10 @@
 }
 
 .dragHandle {
-  position: absolute;
-  top: 8px;
-  right: 8px;
+  flex-shrink: 0;
   width: 24px;
   height: 24px;
+  margin: -2px 4px 0 0;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -52,7 +54,9 @@
 }
 
 .content {
-  padding-right: 28px;
+  flex: 1;
+  min-width: 0;
+  padding: 0 4px 0 0;
   min-height: 1.5em;
   font-size: 0.9375rem;
   line-height: 1.5;
@@ -60,6 +64,97 @@
   outline: none;
   white-space: pre-wrap;
   word-break: break-word;
+}
+
+.menuWrap {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.menuButton {
+  width: 28px;
+  height: 28px;
+  margin: -2px -4px 0 0;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  line-height: 1;
+  color: var(--muted, #888);
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+
+.card:hover .menuButton,
+.menuButton[aria-expanded="true"] {
+  opacity: 1;
+}
+
+@media (pointer: coarse) {
+  .menuButton {
+    opacity: 1;
+  }
+}
+
+.menuButton:hover {
+  background: var(--hover-bg, rgba(0, 0, 0, 0.06));
+  color: var(--fg, #333);
+}
+
+[data-theme="dark"] .menuButton:hover {
+  --hover-bg: rgba(255, 255, 255, 0.08);
+  --fg: #ddd;
+}
+
+.blobMenu {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  margin-top: 2px;
+  min-width: 120px;
+  padding: 4px;
+  background: var(--menu-bg, #fff);
+  border-radius: 8px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+  border: 1px solid var(--menu-border, rgba(0, 0, 0, 0.08));
+  z-index: 20;
+}
+
+[data-theme="dark"] .blobMenu {
+  --menu-bg: #1e1e1e;
+  --menu-border: rgba(255, 255, 255, 0.1);
+}
+
+.blobMenuItem {
+  display: block;
+  width: 100%;
+  padding: 8px 12px;
+  text-align: left;
+  font-size: 0.875rem;
+  border: none;
+  background: transparent;
+  color: var(--fg, #111);
+  cursor: pointer;
+  border-radius: 6px;
+  -webkit-tap-highlight-color: transparent;
+}
+
+[data-theme="dark"] .blobMenuItem {
+  --fg: #eee;
+}
+
+.blobMenuItem:hover {
+  background: var(--hover-bg, rgba(0, 0, 0, 0.06));
+}
+
+[data-theme="dark"] .blobMenuItem:hover {
+  --hover-bg: rgba(255, 255, 255, 0.08);
 }
 
 [data-theme="dark"] .content {

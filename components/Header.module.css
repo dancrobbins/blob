@@ -15,9 +15,10 @@
   position: relative;
 }
 
-.hamburger {
+.mainMenu {
   display: flex;
   flex-direction: column;
+  align-items: center;
   justify-content: center;
   gap: 5px;
   width: 44px;
@@ -30,15 +31,15 @@
   -webkit-tap-highlight-color: transparent;
 }
 
-.hamburger:hover {
+.mainMenu:hover {
   background: var(--hover-bg, rgba(0, 0, 0, 0.05));
 }
 
-[data-theme="dark"] .hamburger:hover {
+[data-theme="dark"] .mainMenu:hover {
   --hover-bg: rgba(255, 255, 255, 0.08);
 }
 
-.hamburgerBar {
+.mainMenuIconBar {
   display: block;
   width: 22px;
   height: 2px;
@@ -46,7 +47,7 @@
   border-radius: 1px;
 }
 
-[data-theme="dark"] .hamburgerBar {
+[data-theme="dark"] .mainMenuIconBar {
   --fg: #eee;
 }
 
@@ -195,10 +196,11 @@
 }
 
 .accountBubble {
+  position: relative;
   width: 44px;
   height: 44px;
   border-radius: 50%;
-  border: 2px solid rgba(0, 0, 0, 0.12);
+  border: none;
   background: var(--account-bg, #e8e8e8);
   display: flex;
   align-items: center;
@@ -210,7 +212,6 @@
 
 [data-theme="dark"] .accountBubble {
   --account-bg: #333;
-  border-color: rgba(255, 255, 255, 0.2);
 }
 
 .accountQuestion {
@@ -224,9 +225,14 @@
 }
 
 .avatarImg {
+  position: absolute;
+  inset: 0;
+  display: block;
   width: 100%;
   height: 100%;
   object-fit: cover;
+  object-position: center;
+  pointer-events: none;
 }
 
 .accountDropdown {
@@ -234,6 +240,7 @@
   top: 100%;
   right: 0;
   margin-top: 4px;
+  z-index: 10;
   min-width: 160px;
   max-width: 280px;
   padding: 8px;

@@ -11,23 +11,39 @@ import styles from "./Header.module.css";
 const BLOBBY_COLORS: string[] = ["pink"];
 
 export function Header() {
-  const { preferences, setPreferences, userId } = useBlobsContext();
+  const { preferences, setPreferences, userId, anyMenuOpenRef } = useBlobsContext();
   const [menuOpen, setMenuOpen] = useState(false);
   const [accountOpen, setAccountOpen] = useState(false);
+
+  useEffect(() => {
+    anyMenuOpenRef.current = menuOpen || accountOpen;
+  }, [menuOpen, accountOpen, anyMenuOpenRef]);
   const [userAvatar, setUserAvatar] = useState<string | null>(null);
   const [signInError, setSignInError] = useState<string | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const accountRef = useRef<HTMLDivElement>(null);
+
+  const readAvatarFromUser = (user: { user_metadata?: Record<string, unknown>; raw_user_meta_data?: Record<string, unknown> } | null) => {
+    if (!user) return null;
+    const meta = user.user_metadata ?? user.raw_user_meta_data ?? {};
+    return (meta.avatar_url as string) ?? (meta.picture as string) ?? null;
+  };
 
   useEffect(() => {
     if (!supabase || !userId) {
       setUserAvatar(null);
       return;
     }
-    supabase.auth.getUser().then(({ data: { user } }) => {
-      const url = user?.user_metadata?.avatar_url ?? user?.user_metadata?.picture ?? null;
-      setUserAvatar(url);
+    const applyAvatar = (user: Parameters<typeof readAvatarFromUser>[0]) => {
+      setUserAvatar(readAvatarFromUser(user));
+    };
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      applyAvatar(session?.user ?? null);
     });
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      applyAvatar(session?.user ?? null);
+    });
+    return () => subscription.unsubscribe();
   }, [userId]);
 
   useEffect(() => {
@@ -99,25 +115,17 @@ export function Header() {
       <div className={styles.left} ref={menuRef}>
         <button
           type="button"
-          className={styles.hamburger}
+          className={styles.mainMenu}
           onClick={() => setMenuOpen((o) => !o)}
-          aria-label="Open menu"
+          aria-label="Open Main menu"
           aria-expanded={menuOpen}
         >
-          <span className={styles.hamburgerBar} />
-          <span className={styles.hamburgerBar} />
-          <span className={styles.hamburgerBar} />
+          <span className={styles.mainMenuIconBar} />
+          <span className={styles.mainMenuIconBar} />
+          <span className={styles.mainMenuIconBar} />
         </button>
         {menuOpen && (
           <div className={styles.menu}>
-            <div className={styles.menuSection}>
-              <span className={styles.menuLabel}>Version</span>
-              <span className={styles.menuValue}>{APP_VERSION}</span>
-            </div>
-            <div className={styles.menuSection}>
-              <span className={styles.menuLabel}>Build</span>
-              <span className={styles.menuValue}>{buildDateLocal}</span>
-            </div>
             <div className={styles.menuSection}>
               <span className={styles.menuLabel}>Theme</span>
               <div className={styles.themeTabs} role="tablist" aria-label="Theme">
@@ -179,6 +187,14 @@ export function Header() {
                 ))}
               </div>
             </div>
+            <div className={styles.menuSection}>
+              <span className={styles.menuLabel}>Version</span>
+              <span className={styles.menuValue}>{APP_VERSION}</span>
+            </div>
+            <div className={styles.menuSection}>
+              <span className={styles.menuLabel}>Build</span>
+              <span className={styles.menuValue}>{buildDateLocal}</span>
+            </div>
           </div>
         )}
       </div>
@@ -192,7 +208,15 @@ export function Header() {
           aria-expanded={accountOpen}
         >
           {userAvatar ? (
-            <img src={userAvatar} alt="" width={36} height={36} className={styles.avatarImg} />
+            <img
+              src={userAvatar}
+              alt=""
+              width={36}
+              height={36}
+              className={styles.avatarImg}
+              referrerPolicy="no-referrer"
+              onError={() => setUserAvatar(null)}
+            />
           ) : (
             <span className={styles.accountQuestion}>?</span>
           )}
@@ -202,7 +226,10 @@ export function Header() {
             {userId ? (
               <>
                 <button type="button" className={styles.accountItem} onClick={signOut}>
-                  Sign out
+                  Logout
+                </button>
+                <button type="button" className={styles.accountItem} onClick={signIn}>
+                  Switch account
                 </button>
               </>
             ) : (

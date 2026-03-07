@@ -44,19 +44,53 @@ function setCaretPosition(div: HTMLDivElement, offset: number) {
 
 export function BlobCard({
   blob,
+  autoFocus,
+  onAutoFocusDone,
   onUpdate,
   onPosition,
   onFocus,
+  onDuplicate,
+  onDelete,
 }: {
   blob: Blob;
+  autoFocus?: boolean;
+  onAutoFocusDone?: () => void;
   onUpdate: (content: string) => void;
   onPosition: (x: number, y: number) => void;
   onFocus: () => void;
+  onDuplicate: () => void;
+  onDelete: () => void;
 }) {
   const cardRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
   const [isDragging, setIsDragging] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
   const dragStart = useRef({ x: 0, y: 0, blobX: 0, blobY: 0 });
+
+  useEffect(() => {
+    if (!menuOpen) return;
+    const close = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setMenuOpen(false);
+      }
+    };
+    document.addEventListener("click", close);
+    return () => document.removeEventListener("click", close);
+  }, [menuOpen]);
+
+  useEffect(() => {
+    if (!autoFocus || !contentRef.current) return;
+    const el = contentRef.current;
+    el.focus();
+    const placeCaretAfterBullet = () => {
+      if (!el.innerText?.startsWith(BULLET)) return;
+      setCaretPosition(el, BULLET.length);
+    };
+    placeCaretAfterBullet();
+    requestAnimationFrame(placeCaretAfterBullet);
+    onAutoFocusDone?.();
+  }, [autoFocus, onAutoFocusDone]);
 
   const handlePointerDown = useCallback(
     (e: React.PointerEvent) => {
@@ -117,9 +151,12 @@ export function BlobCard({
         const text = el.innerText ?? "";
         const before = text.slice(0, caret);
         const after = text.slice(caret);
-        const newText = before + "\n" + after;
+        const newLineWithBullet = "\n" + BULLET;
+        const newText = before + newLineWithBullet + after;
+        const caretOffset = before.length + newLineWithBullet.length;
         el.innerText = newText;
-        setCaretPosition(el, before.length + 1);
+        setCaretPosition(el, caretOffset);
+        requestAnimationFrame(() => setCaretPosition(el, caretOffset));
         onUpdate(newText);
       }
     },
@@ -177,6 +214,48 @@ export function BlobCard({
         onFocus={handleFocus}
         onBlur={handleBlur}
       />
+      <div className={styles.menuWrap} ref={menuRef}>
+        <button
+          type="button"
+          className={styles.menuButton}
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            setMenuOpen((o) => !o);
+          }}
+          aria-label="Blob options"
+          aria-expanded={menuOpen}
+          aria-haspopup="menu"
+        >
+          …
+        </button>
+        {menuOpen && (
+          <div className={styles.blobMenu} role="menu">
+            <button
+              type="button"
+              className={styles.blobMenuItem}
+              role="menuitem"
+              onClick={() => {
+                onDuplicate();
+                setMenuOpen(false);
+              }}
+            >
+              Duplicate
+            </button>
+            <button
+              type="button"
+              className={styles.blobMenuItem}
+              role="menuitem"
+              onClick={() => {
+                onDelete();
+                setMenuOpen(false);
+              }}
+            >
+              Delete
+            </button>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

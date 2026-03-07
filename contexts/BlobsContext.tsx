@@ -34,6 +34,8 @@ type BlobsContextValue = {
   setPreferences: (p: Preferences | ((prev: Preferences) => Preferences)) => void;
   userId: string | null;
   isLoading: boolean;
+  /** Ref set by Header: true when Main menu or account menu is open. Used by canvas to avoid adding a blob when tap closes a menu. */
+  anyMenuOpenRef: React.MutableRefObject<boolean>;
 };
 
 const BlobsContext = createContext<BlobsContextValue | null>(null);
@@ -45,6 +47,7 @@ export function BlobsProvider({ children }: { children: ReactNode }) {
   );
   const [userId, setUserId] = React.useState<string | null>(null);
   const [isLoading, setIsLoading] = React.useState(true);
+  const anyMenuOpenRef = React.useRef(false);
 
   const setPreferences = useCallback(
     (p: Preferences | ((prev: Preferences) => Preferences)) => {
@@ -122,6 +125,7 @@ export function BlobsProvider({ children }: { children: ReactNode }) {
     setPreferences,
     userId,
     isLoading,
+    anyMenuOpenRef,
   };
 
   return (

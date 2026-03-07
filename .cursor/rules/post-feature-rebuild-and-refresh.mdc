@@ -1,30 +1,38 @@
 ---
-description: After every feature or bug fix, rebuild and refresh the app in Cursor Browser
+description: After every feature or bug fix, rebuild and refresh in existing Cursor Browser (mandatory)
 alwaysApply: true
 ---
 
-# Post-feature/bug rebuild and browser refresh
+# Post-feature/bug rebuild and refresh (mandatory)
 
-**This rule is mandatory. Do not skip these steps.**
+**This rule is mandatory. You must perform these steps every time. Do not skip, summarize, or defer to the user.**
 
-After completing any feature or fixing any bug:
+After completing any feature or fixing any bug, before saying the work is "done" or "complete":
 
-1. **Rebuild the app**
-   - Run the project build (e.g. `npm run build` for this Next.js app).
-   - Resolve any build errors before considering the task done.
-   - Do not mark the task complete until the build succeeds.
+## Required steps (do all three, in order)
 
-2. **Update the running app in Cursor Browser**
-   - If the dev server is already running, ensure the Cursor Browser tab shows the latest code:
-     - Prefer refreshing the existing tab (e.g. `browser_navigate` to the same app URL or equivalent refresh) so the running app reflects the change.
-   - If the dev server was not running, start it (e.g. `npm run dev`) and open or refresh the app URL in the existing Cursor Browser so the user sees the updated app.
+1. **Run the runapp script**
+   - In the project root, run: `npm run runapp`
+   - This rebuilds the app and reuses the existing dev server (or starts it only if ports 3000 and 3001 are free). Do not start a second dev server manually.
+   - Wait for the command to finish. If it printed "Dev server starting.", wait 2–3 seconds for the server to be ready.
 
-**When this applies**
-- After implementing or completing a feature.
-- After fixing a bug (including small fixes).
-- Before saying the work is "done" or "complete."
+2. **List Cursor Browser tabs**
+   - Call the **cursor-ide-browser** MCP tool `browser_tabs` with `action: "list"` to get open tabs and their URLs.
 
-**Hardening**
-- Treat "feature completed" and "bug fixed" as triggers: no exceptions.
-- If the user has an existing Cursor Browser tab open on the app, always refresh or reload that tab after a successful build so they see the change immediately.
-- Do not assume the user will rebuild or refresh manually; perform these steps as part of closing out the task.
+3. **Refresh the app in the existing Cursor Browser**
+   - If any tab's URL is the app (`http://localhost:3000` or `http://localhost:3001`, with or without path): call `browser_navigate` with **that exact URL** to refresh that tab.
+   - If no tab is on the app: call `browser_navigate` with `http://localhost:3000`. If the app does not load (e.g. it runs on 3001), use `http://localhost:3001`.
+   - Reuse the existing tab; do not open a new tab unless there is no existing tab. Do not tell the user to open a URL in their browser.
+
+## When this applies
+
+- After implementing or completing a feature (every time).
+- After fixing a bug, including small fixes (every time).
+- Before you say the work is "done," "complete," or "ready."
+
+## Hardening
+
+- Treat "feature completed" and "bug fixed" as triggers: **no exceptions.** Perform the three steps above as part of closing out the task.
+- Do not assume the user will rebuild or refresh manually.
+- Do not skip the browser steps because "the user can refresh" or "the build succeeded."
+- If the build fails, fix the build and then still perform the browser refresh once the build succeeds.

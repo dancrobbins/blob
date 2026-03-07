@@ -18,22 +18,27 @@ function isPortInUse(port) {
   }
 }
 
+function getDevServerPort() {
+  if (isPortInUse(3000)) return 3000;
+  if (isPortInUse(3001)) return 3001;
+  return null;
+}
+
 console.log("Building app...");
 execSync("npm run build", { cwd: root, stdio: "inherit" });
 
-const devServerAlreadyRunning = isPortInUse(3000) || isPortInUse(3001);
-if (devServerAlreadyRunning) {
-  console.log("Using existing dev server (port 3000 or 3001 already in use).");
-} else {
-  console.log("Starting dev server...");
-  const dev = spawn("npm", ["run", "dev"], {
-    cwd: root,
-    stdio: "ignore",
-    detached: true,
-    shell: true,
-  });
-  dev.unref();
-  console.log("Dev server starting.");
+// Recheck after build: reuse existing dev server if either port is in use (avoids Next.js "port 3000 was in use, trying 3001" message).
+const existingPort = getDevServerPort();
+if (existingPort !== null) {
+  console.log("Using existing dev server.");
+  process.exit(0);
 }
 
-console.log("Use Cursor Browser to open or refresh the app (e.g. http://localhost:3000 or :3001).");
+const dev = spawn("npm", ["run", "dev"], {
+  cwd: root,
+  stdio: "ignore",
+  detached: true,
+  shell: true,
+});
+dev.unref();
+console.log("Dev server starting.");
