@@ -1,3 +1,7 @@
 {
-  "version": "1.0.0"
+  "version": "1.0.0",
+  "updates": [
+    "Build version tooltip shows what's new in this release.",
+    "Hover the build date (desktop) or tap it (mobile) to see updates."
+  ]
 }

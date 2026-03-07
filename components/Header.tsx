@@ -2,7 +2,7 @@
 
 import React, { useState, useRef, useEffect } from "react";
 import { useBlobsContext } from "@/contexts/BlobsContext";
-import { APP_VERSION, BUILD_TIME } from "@/lib/constants";
+import { APP_VERSION, BUILD_TIME, BUILD_UPDATES } from "@/lib/constants";
 import { supabase } from "@/lib/supabase";
 import { BLOBBY_GRID_COLS, BLOBBY_GRID_ROWS } from "@/lib/types";
 import styles from "./Header.module.css";
@@ -10,7 +10,13 @@ import styles from "./Header.module.css";
 // Grid order: left-to-right, top-to-bottom (indices 0..8). Add names as you add expression assets.
 const BLOBBY_COLORS: string[] = ["pink"];
 
-export function Header() {
+export function Header({
+  hasHiddenBlobs,
+  onUnhideAll,
+}: {
+  hasHiddenBlobs?: boolean;
+  onUnhideAll?: () => void;
+}) {
   const { preferences, setPreferences, userId, anyMenuOpenRef } = useBlobsContext();
   const [menuOpen, setMenuOpen] = useState(false);
   const [accountOpen, setAccountOpen] = useState(false);
@@ -20,8 +26,10 @@ export function Header() {
   }, [menuOpen, accountOpen, anyMenuOpenRef]);
   const [userAvatar, setUserAvatar] = useState<string | null>(null);
   const [signInError, setSignInError] = useState<string | null>(null);
+  const [buildTooltipOpen, setBuildTooltipOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   const accountRef = useRef<HTMLDivElement>(null);
+  const buildTooltipRef = useRef<HTMLDivElement>(null);
 
   const readAvatarFromUser = (user: { user_metadata?: Record<string, unknown>; raw_user_meta_data?: Record<string, unknown> } | null) => {
     if (!user) return null;
@@ -54,11 +62,24 @@ export function Header() {
       ) {
         setMenuOpen(false);
         setAccountOpen(false);
+        setBuildTooltipOpen(false);
       }
     };
     document.addEventListener("click", close);
     return () => document.removeEventListener("click", close);
   }, []);
+
+  // Close build tooltip when clicking outside it (e.g. elsewhere in menu)
+  useEffect(() => {
+    if (!buildTooltipOpen) return;
+    const close = (e: MouseEvent) => {
+      if (buildTooltipRef.current && !buildTooltipRef.current.contains(e.target as Node)) {
+        setBuildTooltipOpen(false);
+      }
+    };
+    document.addEventListener("click", close);
+    return () => document.removeEventListener("click", close);
+  }, [buildTooltipOpen]);
 
   const buildDateLocal = (() => {
     try {
@@ -188,12 +209,50 @@ export function Header() {
               </div>
             </div>
             <div className={styles.menuSection}>
+              <button
+                type="button"
+                className={styles.menuAction}
+                disabled={!hasHiddenBlobs}
+                onClick={() => onUnhideAll?.()}
+              >
+                Unhide all
+              </button>
+            </div>
+            <div className={styles.menuSection}>
               <span className={styles.menuLabel}>Version</span>
               <span className={styles.menuValue}>{APP_VERSION}</span>
             </div>
             <div className={styles.menuSection}>
               <span className={styles.menuLabel}>Build</span>
-              <span className={styles.menuValue}>{buildDateLocal}</span>
+              <div
+                ref={buildTooltipRef}
+                className={styles.buildTooltipWrap}
+                onMouseEnter={() => setBuildTooltipOpen(true)}
+                onMouseLeave={() => setBuildTooltipOpen(false)}
+              >
+                <button
+                  type="button"
+                  className={styles.buildTooltipTrigger}
+                  onClick={() => setBuildTooltipOpen((o) => !o)}
+                  aria-expanded={buildTooltipOpen}
+                  aria-label="Build date; tap or hover for updates in this build"
+                >
+                  {buildDateLocal}
+                </button>
+                {buildTooltipOpen && BUILD_UPDATES.length > 0 && (
+                  <div
+                    className={styles.buildTooltip}
+                    role="tooltip"
+                    id="build-updates-tooltip"
+                  >
+                    <ul className={styles.buildTooltipList}>
+                      {BUILD_UPDATES.map((line, i) => (
+                        <li key={i}>{line}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         )}

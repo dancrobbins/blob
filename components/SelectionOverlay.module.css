@@ -1,0 +1,139 @@
+.overlay {
+  position: fixed;
+  pointer-events: none;
+  z-index: 10;
+}
+
+.overlayInteractive {
+  pointer-events: auto;
+}
+
+.antsWrap {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.antsSvg {
+  position: absolute;
+  inset: -2px;
+  width: calc(100% + 4px);
+  height: calc(100% + 4px);
+  overflow: visible;
+}
+
+.antsLine {
+  fill: none;
+  stroke: var(--selection-stroke, #333);
+  stroke-width: 2;
+  stroke-dasharray: 8 8;
+  animation: marchingAnts 0.4s linear infinite;
+}
+
+[data-theme="dark"] .antsLine {
+  --selection-stroke: #eee;
+}
+
+@keyframes marchingAnts {
+  to {
+    stroke-dashoffset: -32;
+  }
+}
+
+.menuWrap {
+  position: absolute;
+  top: -36px;
+  right: 0;
+  pointer-events: auto;
+}
+
+.menuButton {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  line-height: 1;
+  color: var(--muted, #888);
+  background: var(--menu-bg, #fff);
+  border: 1px solid var(--menu-border, rgba(0, 0, 0, 0.08));
+  border-radius: 6px;
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  -webkit-tap-highlight-color: transparent;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+
+.overlay:hover .menuButton,
+.menuButton[aria-expanded="true"] {
+  opacity: 1;
+}
+
+@media (pointer: coarse) {
+  .menuButton {
+    opacity: 1;
+  }
+}
+
+.menuButton:hover {
+  background: var(--hover-bg, rgba(0, 0, 0, 0.06));
+  color: var(--fg, #333);
+}
+
+[data-theme="dark"] .menuButton {
+  --menu-bg: #2a2a2a;
+  --menu-border: rgba(255, 255, 255, 0.15);
+}
+
+[data-theme="dark"] .menuButton:hover {
+  --hover-bg: rgba(255, 255, 255, 0.1);
+  --fg: #eee;
+}
+
+.selectionMenu {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  margin-top: 2px;
+  min-width: 120px;
+  padding: 4px;
+  background: var(--menu-bg, #fff);
+  border-radius: 8px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+  border: 1px solid var(--menu-border, rgba(0, 0, 0, 0.08));
+  z-index: 20;
+}
+
+[data-theme="dark"] .selectionMenu {
+  --menu-bg: #1e1e1e;
+  --menu-border: rgba(255, 255, 255, 0.1);
+}
+
+.selectionMenuItem {
+  display: block;
+  width: 100%;
+  padding: 8px 12px;
+  text-align: left;
+  font-size: 0.875rem;
+  border: none;
+  background: transparent;
+  color: var(--fg, #111);
+  cursor: pointer;
+  border-radius: 6px;
+  -webkit-tap-highlight-color: transparent;
+}
+
+[data-theme="dark"] .selectionMenuItem {
+  --fg: #eee;
+}
+
+.selectionMenuItem:hover {
+  background: var(--hover-bg, rgba(0, 0, 0, 0.06));
+}
+
+[data-theme="dark"] .selectionMenuItem:hover {
+  --hover-bg: rgba(255, 255, 255, 0.08);
+}

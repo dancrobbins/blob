@@ -51,6 +51,7 @@ export function BlobCard({
   onFocus,
   onDuplicate,
   onDelete,
+  scale = 1,
 }: {
   blob: Blob;
   autoFocus?: boolean;
@@ -60,6 +61,7 @@ export function BlobCard({
   onFocus: () => void;
   onDuplicate: () => void;
   onDelete: () => void;
+  scale?: number;
 }) {
   const cardRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
@@ -94,6 +96,7 @@ export function BlobCard({
 
   const handlePointerDown = useCallback(
     (e: React.PointerEvent) => {
+      if (blob.locked) return;
       if ((e.target as HTMLElement).closest("[data-drag-handle]")) {
         e.preventDefault();
         setIsDragging(true);
@@ -106,7 +109,7 @@ export function BlobCard({
         (e.target as HTMLElement).setPointerCapture?.(e.pointerId);
       }
     },
-    [blob.x, blob.y]
+    [blob.x, blob.y, blob.locked]
   );
 
   const handlePointerMove = useCallback(
@@ -114,9 +117,12 @@ export function BlobCard({
       if (!isDragging) return;
       const dx = e.clientX - dragStart.current.x;
       const dy = e.clientY - dragStart.current.y;
-      onPosition(dragStart.current.blobX + dx, dragStart.current.blobY + dy);
+      onPosition(
+        dragStart.current.blobX + dx / scale,
+        dragStart.current.blobY + dy / scale
+      );
     },
-    [isDragging, onPosition]
+    [isDragging, onPosition, scale]
   );
 
   const handlePointerUp = useCallback(
@@ -147,16 +153,31 @@ export function BlobCard({
         e.preventDefault();
         const el = contentRef.current;
         if (!el) return;
-        const caret = getCaretPosition(el);
-        const text = el.innerText ?? "";
-        const before = text.slice(0, caret);
-        const after = text.slice(caret);
-        const newLineWithBullet = "\n" + BULLET;
-        const newText = before + newLineWithBullet + after;
-        const caretOffset = before.length + newLineWithBullet.length;
-        el.innerText = newText;
-        setCaretPosition(el, caretOffset);
-        requestAnimationFrame(() => setCaretPosition(el, caretOffset));
+
+        const sel = window.getSelection();
+        if (!sel || sel.rangeCount === 0) return;
+
+        // Delete any selected text first
+        const range = sel.getRangeAt(0);
+        range.deleteContents();
+
+        // Insert "\n• " at the caret position directly in the DOM
+        const insertText = "\n" + BULLET;
+        const textNode = document.createTextNode(insertText);
+        range.insertNode(textNode);
+
+        // Move caret to end of the inserted text
+        range.setStartAfter(textNode);
+        range.collapse(true);
+        sel.removeAllRanges();
+        sel.addRange(range);
+
+        // Normalize so the DOM doesn't have fragmented text nodes that
+        // confuse innerText reading later
+        el.normalize();
+
+        // Re-read the final text and notify
+        const newText = (el.innerText ?? "").replace(/\r\n/g, "\n").replace(/\r/g, "\n");
         onUpdate(newText);
       }
     },
@@ -187,6 +208,7 @@ export function BlobCard({
     <div
       ref={cardRef}
       data-blob-card
+      data-blob-id={blob.id}
       className={styles.card}
       style={{
         left: blob.x,

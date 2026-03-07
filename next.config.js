@@ -5,6 +5,7 @@ const nextConfig = {
   env: {
     NEXT_PUBLIC_BUILD_TIME: new Date().toISOString(),
     NEXT_PUBLIC_APP_VERSION: version.version,
+    NEXT_PUBLIC_BUILD_UPDATES: JSON.stringify(version.updates || []),
   },
 };
 
