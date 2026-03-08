@@ -43,34 +43,39 @@ function killPort(port) {
   }
 }
 
-// Kill ANY existing dev servers on common Next.js ports before building.
-// This is critical: reusing a running dev server after a new build produces
-// mismatched asset hashes — the HTML references new ?v= timestamps but the
-// old server doesn't know about them, causing CSS/JS 404s.
-const NEXT_PORTS = [3000, 3001, 3002, 3003];
-for (const port of NEXT_PORTS) {
-  if (isPortInUse(port)) {
-    console.log(`Stopping existing dev server on port ${port}...`);
-    killPort(port);
+const PORT = 3000;
+const devAlreadyRunning = isPortInUse(PORT);
+
+if (devAlreadyRunning) {
+  // Dev server already on 3000: build only, do not kill or start. Use restartall for a full restart.
+  console.log(`Dev server already running on port ${PORT}. Building only (no restart).`);
+  console.log("Building app...");
+  execSync("npm run build", { cwd: root, stdio: "inherit" });
+  console.log("Build complete. Existing dev server unchanged.");
+} else {
+  // No server on 3000: kill anything on 3000–3003, build, then start.
+  const NEXT_PORTS = [3000, 3001, 3002, 3003];
+  for (const port of NEXT_PORTS) {
+    if (isPortInUse(port)) {
+      console.log(`Stopping existing process on port ${port}...`);
+      killPort(port);
+    }
   }
+  execSync(`node -e "setTimeout(()=>{},1200)"`, {
+    cwd: root,
+    stdio: "ignore",
+    windowsHide: true,
+  });
+  console.log("Building app...");
+  execSync("npm run build", { cwd: root, stdio: "inherit" });
+  const dev = spawn("npm", ["run", "dev"], {
+    cwd: root,
+    stdio: "ignore",
+    detached: true,
+    shell: true,
+  });
+  dev.unref();
+  console.log("Dev server starting on port 3000.");
 }
 
-// Short wait to ensure ports are fully released before the build.
-execSync(`node -e "setTimeout(()=>{},1200)"`, {
-  cwd: root,
-  stdio: "ignore",
-  windowsHide: true,
-});
-
-console.log("Building app...");
-execSync("npm run build", { cwd: root, stdio: "inherit" });
-
-// Start a fresh dev server on port 3000.
-const dev = spawn("npm", ["run", "dev"], {
-  cwd: root,
-  stdio: "ignore",
-  detached: true,
-  shell: true,
-});
-dev.unref();
-console.log("Dev server starting on port 3000.");
+console.log("(When run via runapp/restartall, the agent will open or refresh Cursor Browser to http://localhost:3000.)");

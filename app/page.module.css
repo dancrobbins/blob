@@ -5,13 +5,14 @@
   width: 100%;
 }
 
+/* Layer 1: blobs (card bodies) */
 .canvas {
   position: fixed;
   top: 52px;
   left: 0;
   right: 0;
   bottom: 0;
-  z-index: 0;
+  z-index: 1;
   -webkit-tap-highlight-color: transparent;
   overflow: hidden;
 }
@@ -20,4 +21,35 @@
   position: relative;
   width: 100%;
   height: 100%;
+}
+
+/* Layer 4: dragger and "..." buttons (same transform as canvas, portaled) */
+.controlsOverlay {
+  position: fixed;
+  top: 52px;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 4;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.controlsOverlayInner {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+/* Layer 6: popup menus (dropdowns portaled here) */
+.popupLayer {
+  position: fixed;
+  inset: 0;
+  z-index: 10;
+  pointer-events: none;
+}
+
+.popupLayer > * {
+  pointer-events: auto;
 }

@@ -3,6 +3,7 @@
 import React, { useCallback, useRef, useState, useEffect } from "react";
 import { Header } from "@/components/Header";
 import { Blobby } from "@/components/Blobby";
+import { BlobbyWordBox } from "@/components/BlobbyWordBox";
 import { BlobCard } from "@/components/BlobCard";
 import {
   SelectionOverlay,
@@ -10,7 +11,50 @@ import {
 } from "@/components/SelectionOverlay";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { useBlobsContext } from "@/contexts/BlobsContext";
+import { blobToPlainText } from "@/lib/blob-lines";
+import { ControlsPortalProvider, useControlsPortal } from "@/contexts/ControlsPortalContext";
+import { PopupPortalProvider, usePopupPortal } from "@/contexts/PopupPortalContext";
 import styles from "./page.module.css";
+
+const BLOBBY_BACKER_FILE = "blobby backer L.svg";
+
+function BlobbyBacker({ sizePx, onTap }: { sizePx: number; onTap: () => void }) {
+  return (
+    <button
+      type="button"
+      aria-label="Summarize blobs"
+      data-blobby-area
+      onClick={onTap}
+      style={{
+        position: "fixed",
+        left: "50%",
+        bottom: 74,
+        transform: "translate(-50%, 50%)",
+        width: sizePx,
+        height: sizePx,
+        padding: 0,
+        border: "none",
+        borderRadius: "50%",
+        background: "transparent",
+        cursor: "pointer",
+        zIndex: 2,
+        display: "block",
+      }}
+    >
+      <img
+        src={`/assets/graphics/${encodeURIComponent(BLOBBY_BACKER_FILE)}`}
+        alt=""
+        aria-hidden
+        style={{
+          width: "100%",
+          height: "100%",
+          display: "block",
+          pointerEvents: "none",
+        }}
+      />
+    </button>
+  );
+}
 
 const DRAG_THRESHOLD = 5;
 const SELECTION_PADDING = 4;
@@ -73,7 +117,7 @@ function screenToWorld(
 }
 
 export default function Home() {
-  const { blobs, dispatch, anyMenuOpenRef, undo, redo, canUndo, canRedo } = useBlobsContext();
+  const { blobs, dispatch, anyMenuOpenRef, undo, redo, canUndo, canRedo, preferences } = useBlobsContext();
   const canvasRef = useRef<HTMLDivElement>(null);
   const canvasInnerRef = useRef<HTMLDivElement>(null);
   const pointerDownOnCanvas = useRef(false);
@@ -108,9 +152,44 @@ export default function Home() {
   const [pan, setPan] = useState({ x: 0, y: 0 });
   const [scale, setScale] = useState(1);
   const [isPanning, setIsPanning] = useState(false);
+  const [isShowingAll, setIsShowingAll] = useState(true);
   const [pendingDeleteIds, setPendingDeleteIds] = useState<string[] | null>(null);
+  const [llmSummary, setLlmSummary] = useState<string | null>(null);
+  const [llmLoading, setLlmLoading] = useState(false);
 
   const visibleBlobs = blobs.filter((b) => !b.hidden);
+
+  // Clear LLM summary after 12s so the word box can return to idle/random words
+  useEffect(() => {
+    if (llmSummary == null) return;
+    const t = setTimeout(() => setLlmSummary(null), 12_000);
+    return () => clearTimeout(t);
+  }, [llmSummary]);
+
+  const handleBlobbyTap = useCallback(async () => {
+    const combined = blobs
+      .map((b) => blobToPlainText(b))
+      .filter((c) => c.trim().length > 0)
+      .join("\n");
+    if (combined.length === 0) return;
+    setLlmSummary(null);
+    setLlmLoading(true);
+    try {
+      const res = await fetch("/api/summarize", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text: combined }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && typeof data?.summary === "string") {
+        setLlmSummary(data.summary);
+      } else if (res.status === 429 || data?.error === "RATE_LIMIT") {
+        setLlmSummary("The AI limit has been reached. Try again tomorrow.");
+      }
+    } finally {
+      setLlmLoading(false);
+    }
+  }, [blobs]);
 
   useEffect(() => {
     if (blobs.length > prevBlobCountRef.current) {
@@ -179,7 +258,7 @@ export default function Home() {
     (e: React.PointerEvent) => {
       const target = e.target as HTMLElement;
       if (target.closest("header") || target.closest("[data-selection-overlay]")) return;
-      if (target.closest("[data-blob-card]")) {
+      if (target.closest("[data-blob-card]") || target.closest("[data-blob-controls]")) {
         setSelectedIds([]);
         return;
       }
@@ -228,6 +307,7 @@ export default function Home() {
         scaleRef.current = newScale;
         setPan(newPan);
         setScale(newScale);
+        setIsShowingAll(false);
       }
       lastPinchRef.current = { distance, centerX, centerY };
       return;
@@ -257,6 +337,7 @@ export default function Home() {
         panRef.current = next;
         return next;
       });
+      setIsShowingAll(false);
       dragStart.current = { x: e.clientX, y: e.clientY };
       return;
     }
@@ -310,7 +391,9 @@ export default function Home() {
       isDrawingSelection.current = false;
       setSelectionRect(null);
       if (hadPanOrZoom || menuWasOpenAtPointerDown.current) return;
-      if (target.closest("[data-blob-card]") || target.closest("header")) return;
+      if (target.closest("[data-blob-card]") || target.closest("[data-blob-controls]") || target.closest("header")) return;
+      const under = document.elementFromPoint(e.clientX, e.clientY);
+      if (under?.closest?.("[data-blobby-area]")) return;
 
       setSelectedIds([]);
       if (hadSelectionAtPointerDownRef.current) return;
@@ -350,6 +433,7 @@ export default function Home() {
     scaleRef.current = newScale;
     setPan({ x: newPanX, y: newPanY });
     setScale(newScale);
+    setIsShowingAll(false);
   }, []);
 
   useEffect(() => {
@@ -369,6 +453,7 @@ export default function Home() {
       scaleRef.current = 1;
       setPan({ x: 0, y: 0 });
       setScale(1);
+      setIsShowingAll(true);
       return;
     }
     let left = Infinity;
@@ -395,6 +480,7 @@ export default function Home() {
     scaleRef.current = newScale;
     setPan({ x: newPanX, y: newPanY });
     setScale(newScale);
+    setIsShowingAll(true);
   }, [visibleBlobs]);
 
   useEffect(() => {
@@ -438,7 +524,11 @@ export default function Home() {
 
   return (
     <main className={styles.main}>
-      <Header
+      <ControlsPortalProvider>
+        <PopupPortalProvider>
+          <PopupLayerPortal />
+          <ControlsOverlayPortal pan={pan} scale={scale} />
+        <Header
         hasHiddenBlobs={blobs.some((b) => b.hidden)}
         onUnhideAll={() => dispatch({ type: "UNHIDE_ALL" })}
         hasLockedBlobs={blobs.some((b) => b.locked)}
@@ -446,10 +536,12 @@ export default function Home() {
           const lockedIds = blobs.filter((b) => b.locked).map((b) => b.id);
           if (lockedIds.length > 0) dispatch({ type: "SET_LOCKED", payload: { ids: lockedIds, locked: false } });
         }}
+        canShowAll={!isShowingAll}
       />
       <div
         ref={canvasRef}
         className={styles.canvas}
+        data-testid="canvas"
         style={{ cursor: isPanning ? "grabbing" : "grab" }}
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}
@@ -475,8 +567,8 @@ export default function Home() {
             isSelected={selectedIds.includes(blob.id)}
             autoFocus={blob.id === focusBlobId}
             onAutoFocusDone={() => setFocusBlobId(null)}
-            onUpdate={(content) =>
-              dispatch({ type: "UPDATE_BLOB", payload: { id: blob.id, content } })
+            onUpdate={(lines) =>
+              dispatch({ type: "UPDATE_BLOB", payload: { id: blob.id, lines } })
             }
             onPosition={(x, y) =>
               dispatch({
@@ -487,6 +579,7 @@ export default function Home() {
             onFocus={() => window.dispatchEvent(new CustomEvent("blob:user-action"))}
             onDuplicate={() => dispatch({ type: "DUPLICATE_BLOB", payload: blob.id })}
             onDelete={() => dispatch({ type: "DELETE_BLOB", payload: blob.id })}
+            onHide={() => dispatch({ type: "SET_HIDDEN", payload: { ids: [blob.id], hidden: true } })}
             onLock={() => dispatch({ type: "SET_LOCKED", payload: { ids: [blob.id], locked: true } })}
             onUnlock={() => dispatch({ type: "SET_LOCKED", payload: { ids: [blob.id], locked: false } })}
           />
@@ -532,23 +625,21 @@ export default function Home() {
         </div>
       )}
 
-      {/* Blobby backer graphic; behind Blobby, in front of blobs */}
-      <img
-        src="/assets/graphics/blobby%20backer%2001.svg"
-        alt=""
-        aria-hidden
-        style={{
-          position: "fixed",
-          left: "50%",
-          bottom: 24 + 50 - (100 * Math.SQRT2) / 2,
-          transform: "translateX(-50%)",
-          width: 100 * Math.SQRT2,
-          height: 100 * Math.SQRT2,
-          zIndex: 1,
-          pointerEvents: "none",
+      {/* Blobby backer: shared hit area for summarize + jump */}
+      <BlobbyBacker
+        sizePx={preferences.blobbyBackerSizePx}
+        onTap={() => {
+          handleBlobbyTap();
+          if (typeof window !== "undefined") window.dispatchEvent(new CustomEvent("blobby:tap"));
         }}
       />
       <Blobby />
+      {(preferences.blobbyCommenting === "commenting" || llmSummary != null || llmLoading) && (
+        <BlobbyWordBox
+          summaryFromTap={llmSummary}
+          summaryLoading={llmLoading}
+        />
+      )}
 
       {pendingDeleteIds && (
         <ConfirmDialog
@@ -561,6 +652,35 @@ export default function Home() {
           onCancel={() => setPendingDeleteIds(null)}
         />
       )}
+      </PopupPortalProvider>
+      </ControlsPortalProvider>
     </main>
+  );
+}
+
+function PopupLayerPortal() {
+  const portal = usePopupPortal();
+  if (!portal) return null;
+  return (
+    <div className={styles.popupLayer} aria-hidden>
+      <div ref={portal.setPortalContainer} />
+    </div>
+  );
+}
+
+function ControlsOverlayPortal({ pan, scale }: { pan: { x: number; y: number }; scale: number }) {
+  const portal = useControlsPortal();
+  if (!portal) return null;
+  return (
+    <div className={styles.controlsOverlay}>
+      <div
+        ref={portal.setPortalContainer}
+        className={styles.controlsOverlayInner}
+        style={{
+          transform: `translate(${pan.x}px, ${pan.y}px) scale(${scale})`,
+          transformOrigin: "0 0",
+        }}
+      />
+    </div>
   );
 }

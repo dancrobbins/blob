@@ -4,8 +4,9 @@ const sharp = require("sharp");
 const pngToIco = require("png-to-ico");
 
 const ASSETS = path.join(__dirname, "..", "assets");
-const SRC = path.join(ASSETS, "blob.png");
+const SRC = path.join(ASSETS, "icon", "blobby dark 01.png");
 const OUT = path.join(ASSETS, "icons");
+const PUBLIC_OUT = path.join(__dirname, "..", "public", "assets", "icons");
 
 const SIZES = {
   web: [16, 32, 180, 192, 512],
@@ -19,6 +20,7 @@ async function main() {
 
   for (const dir of ["web", "android", "ios", "windows"]) {
     fs.mkdirSync(path.join(OUT, dir), { recursive: true });
+    fs.mkdirSync(path.join(PUBLIC_OUT, dir), { recursive: true });
   }
 
   const source = sharp(SRC);
@@ -36,15 +38,19 @@ async function main() {
 
     if (SIZES.web.includes(px)) {
       fs.writeFileSync(path.join(OUT, "web", baseName), buffer);
+      fs.writeFileSync(path.join(PUBLIC_OUT, "web", baseName), buffer);
     }
     if (SIZES.android.includes(px)) {
       fs.writeFileSync(path.join(OUT, "android", baseName), buffer);
+      fs.writeFileSync(path.join(PUBLIC_OUT, "android", baseName), buffer);
     }
     if (SIZES.ios.includes(px)) {
       fs.writeFileSync(path.join(OUT, "ios", baseName), buffer);
+      fs.writeFileSync(path.join(PUBLIC_OUT, "ios", baseName), buffer);
     }
 
     fs.writeFileSync(path.join(OUT, `icon-${px}.png`), buffer);
+    fs.writeFileSync(path.join(PUBLIC_OUT, `icon-${px}.png`), buffer);
   }
 
   const icoSizes = [16, 32, 48, 256];
@@ -60,6 +66,7 @@ async function main() {
 
   const ico = await pngToIco(icoBuffers);
   fs.writeFileSync(path.join(OUT, "windows", "favicon.ico"), ico);
+  fs.writeFileSync(path.join(PUBLIC_OUT, "windows", "favicon.ico"), ico);
 
   console.log("Generated icons in assets/icons/");
   console.log("  web:     ", SIZES.web.map((s) => `icon-${s}.png`).join(", "));

@@ -1,0 +1,32 @@
+---
+description: Command "takeALook" — screenshot the app in Cursor Browser, check for TypeScript/build errors, diagnose and report in plain English with how to fix
+alwaysApply: true
+---
+
+# takeALook command
+
+When the user says **takeALook** (e.g. "takeALook", "take a look", "take a look at the app"), do the following and report back in **plain English** what's wrong and how to fix it.
+
+## Steps (in order)
+
+1. **Ensure the app is visible in Cursor Browser.** Call `browser_tabs` with `action: "list"`. If no tab has a URL containing `localhost:3000`, call `browser_navigate` with `http://localhost:3000` and `newTab: true` if needed. If the app tab exists, you may navigate to it or use it as-is.
+
+2. **Capture the current state.** Call `browser_snapshot` to get the page structure and refs. Call `browser_take_screenshot` (optionally `fullPage: true` if the page is long) so you can see how the app actually looks. Use the screenshot and snapshot to spot layout issues, broken UI, overlapping text, missing elements, or wrong styling.
+
+3. **Check for TypeScript and build errors.** Run `npx tsc --noEmit` in the project root to report TypeScript errors. Optionally run `npm run build` and capture any build/lint errors (or skip build if tsc already found issues and you want a faster report). Include any Next.js lint or compile errors in your diagnosis.
+
+4. **Report in plain English.** Summarize:
+   - **What’s wrong:** Describe the visual or structural problems you see (e.g. "The header is cut off on small screens", "Buttons are stacked on top of each other").
+   - **What’s broken in code (if any):** List TypeScript or build errors in simple terms (e.g. "Component X is missing a required prop", "Build fails because of an error in `lib/api.ts`").
+   - **How to fix it:** Give concrete, step-by-step fixes in plain English (e.g. "Add a max-width to the header on mobile", "Fix the type of the `userId` argument in `lib/api.ts` as suggested in the error").
+
+Do not use raw error dumps alone; translate findings into short, actionable sentences the user can follow.
+
+## Summary
+
+| Step | Action |
+|------|--------|
+| 1 | Ensure app tab open in Cursor Browser (navigate to localhost:3000 if needed) |
+| 2 | `browser_snapshot` + `browser_take_screenshot` to capture appearance and structure |
+| 3 | Run `npx tsc --noEmit` (and optionally `npm run build`) to capture TS/build errors |
+| 4 | Report in plain English: what’s wrong, what’s broken in code, how to fix it |

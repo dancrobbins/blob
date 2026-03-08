@@ -49,8 +49,12 @@ type BlobsContextValue = {
   setPreferences: (p: Preferences | ((prev: Preferences) => Preferences)) => void;
   userId: string | null;
   isLoading: boolean;
-  /** Ref set by Header: true when Main menu or account menu is open. Used by canvas to avoid adding a blob when tap closes a menu. */
+  /** Ref: true when any popup menu (header or blob "...") is open. Used by canvas to avoid adding a blob when tap closes a menu. */
   anyMenuOpenRef: React.MutableRefObject<boolean>;
+  /** Call when a menu opens; anyMenuOpenRef is set true. */
+  incrementMenuOpen: () => void;
+  /** Call when a menu closes; anyMenuOpenRef set false when count reaches 0. */
+  decrementMenuOpen: () => void;
 };
 
 const BlobsContext = createContext<BlobsContextValue | null>(null);
@@ -61,6 +65,8 @@ const MAJOR_ACTIONS = new Set<BlobsAction["type"]>([
   "DELETE_BLOBS",
   "DUPLICATE_BLOB",
   "DUPLICATE_BLOBS",
+  "SET_HIDDEN",
+  "UNHIDE_ALL",
 ]);
 const POSITION_ACTION = "SET_POSITION";
 
@@ -85,6 +91,15 @@ export function BlobsProvider({ children }: { children: ReactNode }) {
   const [userId, setUserId] = React.useState<string | null>(null);
   const [isLoading, setIsLoading] = React.useState(true);
   const anyMenuOpenRef = React.useRef(false);
+  const menuOpenCountRef = React.useRef(0);
+  const incrementMenuOpen = React.useCallback(() => {
+    menuOpenCountRef.current += 1;
+    anyMenuOpenRef.current = true;
+  }, []);
+  const decrementMenuOpen = React.useCallback(() => {
+    menuOpenCountRef.current = Math.max(0, menuOpenCountRef.current - 1);
+    anyMenuOpenRef.current = menuOpenCountRef.current > 0;
+  }, []);
   const lastActionRef = React.useRef<"major" | "position" | null>(null);
   const positionSaveTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const blobsRef = React.useRef<Blob[]>(blobs);
@@ -309,9 +324,9 @@ export function BlobsProvider({ children }: { children: ReactNode }) {
     const poll = async () => {
       const cloud = await fetchUserBlobs(userId);
       if (!cloud) return;
-      const current = blobsRef.current;
-      const merged = mergeLocalAndCloudBlobs(current, cloud.blobs);
-      if (!blobsEqual(merged, current)) {
+      const latestLocal = blobsRef.current;
+      const merged = mergeLocalAndCloudBlobs(latestLocal, cloud.blobs);
+      if (!blobsEqual(merged, latestLocal)) {
         console.log("[blob sync] poll: cloud has updates, merging", merged.length, "blobs");
         dispatchReducer({ type: "SET_BLOBS", payload: merged });
         // Logged-in users: do not cache in browser
@@ -351,6 +366,8 @@ export function BlobsProvider({ children }: { children: ReactNode }) {
     userId,
     isLoading,
     anyMenuOpenRef,
+    incrementMenuOpen,
+    decrementMenuOpen,
   };
 
   return (

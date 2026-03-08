@@ -1,0 +1,428 @@
+[  262630ms] [ERROR] ./components/BlobCard.tsx
+Error: 
+  × Expression expected
+     ╭─[C:\Users\danrobbins\Code\Personal\blob\components\BlobCard.tsx:167:1]
+ 167 │       }
+ 168 │     },
+ 169 │     [blob.x, blob.y, blob.locked]
+ 170 │   );
+     ·   ─
+ 171 │ 
+ 172 │   const handlePointerMove = useCallback(
+ 172 │     (e: React.PointerEvent) => {
+     ╰────
+
+Caused by:
+    Syntax Error
+
+Import trace for requested module:
+./components/BlobCard.tsx
+./app/page.tsx @ webpack-internal:///(app-pages-browser)/./node_modules/next/dist/client/app-index.js:32
+[  262791ms] [ERROR] ./components/BlobCard.tsx
+Error: 
+  × Expression expected
+     ╭─[C:\Users\danrobbins\Code\Personal\blob\components\BlobCard.tsx:167:1]
+ 167 │       }
+ 168 │     },
+ 169 │     [blob.x, blob.y, blob.locked]
+ 170 │   );
+     ·   ─
+ 171 │ 
+ 172 │   const handlePointerMove = useCallback(
+ 172 │     (e: React.PointerEvent) => {
+     ╰────
+
+Caused by:
+    Syntax Error
+
+Import trace for requested module:
+./components/BlobCard.tsx
+./app/page.tsx @ webpack-internal:///(app-pages-browser)/./node_modules/next/dist/client/app-index.js:32
+[  262888ms] [ERROR] ./components/BlobCard.tsx
+Error: 
+  × Expression expected
+     ╭─[C:\Users\danrobbins\Code\Personal\blob\components\BlobCard.tsx:167:1]
+ 167 │       }
+ 168 │     },
+ 169 │     [blob.x, blob.y, blob.locked]
+ 170 │   );
+     ·   ─
+ 171 │ 
+ 172 │   const handlePointerMove = useCallback(
+ 172 │     (e: React.PointerEvent) => {
+     ╰────
+
+Caused by:
+    Syntax Error
+
+Import trace for requested module:
+./components/BlobCard.tsx
+./app/page.tsx @ webpack-internal:///(app-pages-browser)/./node_modules/next/dist/client/app-index.js:32
+[  262911ms] [ERROR] ./components/BlobCard.tsx
+Error: 
+  × Expression expected
+     ╭─[C:\Users\danrobbins\Code\Personal\blob\components\BlobCard.tsx:167:1]
+ 167 │       }
+ 168 │     },
+ 169 │     [blob.x, blob.y, blob.locked]
+ 170 │   );
+     ·   ─
+ 171 │ 
+ 172 │   const handlePointerMove = useCallback(
+ 172 │     (e: React.PointerEvent) => {
+     ╰────
+
+Caused by:
+    Syntax Error
+
+Import trace for requested module:
+./components/BlobCard.tsx
+./app/page.tsx @ webpack-internal:///(app-pages-browser)/./node_modules/next/dist/client/app-index.js:32
+[  263016ms] [ERROR] ./components/BlobCard.tsx
+Error: 
+  × Expression expected
+     ╭─[C:\Users\danrobbins\Code\Personal\blob\components\BlobCard.tsx:167:1]
+ 167 │       }
+ 168 │     },
+ 169 │     [blob.x, blob.y, blob.locked]
+ 170 │   );
+     ·   ─
+ 171 │ 
+ 172 │   const handlePointerMove = useCallback(
+ 172 │     (e: React.PointerEvent) => {
+     ╰────
+
+Caused by:
+    Syntax Error
+
+Import trace for requested module:
+./components/BlobCard.tsx
+./app/page.tsx @ webpack-internal:///(app-pages-browser)/./node_modules/next/dist/client/app-index.js:32
+[  263244ms] [ERROR] ./components/BlobCard.tsx
+Error: 
+  × Expression expected
+     ╭─[C:\Users\danrobbins\Code\Personal\blob\components\BlobCard.tsx:167:1]
+ 167 │       }
+ 168 │     },
+ 169 │     [blob.x, blob.y, blob.locked]
+ 170 │   );
+     ·   ─
+ 171 │ 
+ 172 │   const handlePointerMove = useCallback(
+ 172 │     (e: React.PointerEvent) => {
+     ╰────
+
+Caused by:
+    Syntax Error
+
+Import trace for requested module:
+./components/BlobCard.tsx
+./app/page.tsx @ webpack-internal:///(app-pages-browser)/./node_modules/next/dist/client/app-index.js:32
+[  264819ms] [ERROR] ./components/BlobCard.tsx
+Error: 
+  × Expression expected
+     ╭─[C:\Users\danrobbins\Code\Personal\blob\components\BlobCard.tsx:167:1]
+ 167 │       }
+ 168 │     },
+ 169 │     [blob.x, blob.y, blob.locked]
+ 170 │   );
+     ·   ─
+ 171 │ 
+ 172 │   const handlePointerMove = useCallback(
+ 172 │     (e: React.PointerEvent) => {
+     ╰────
+
+Caused by:
+    Syntax Error
+
+Import trace for requested module:
+./components/BlobCard.tsx
+./app/page.tsx @ webpack-internal:///(app-pages-browser)/./node_modules/next/dist/client/app-index.js:32
+[  265988ms] [ERROR] ./components/BlobCard.tsx
+Error: 
+  × Expression expected
+     ╭─[C:\Users\danrobbins\Code\Personal\blob\components\BlobCard.tsx:167:1]
+ 167 │       }
+ 168 │     },
+ 169 │     [blob.x, blob.y, blob.locked]
+ 170 │   );
+     ·   ─
+ 171 │ 
+ 172 │   const handlePointerMove = useCallback(
+ 172 │     (e: React.PointerEvent) => {
+     ╰────
+
+Caused by:
+    Syntax Error
+
+Import trace for requested module:
+./components/BlobCard.tsx
+./app/page.tsx @ webpack-internal:///(app-pages-browser)/./node_modules/next/dist/client/app-index.js:32
+[  266398ms] [ERROR] ./components/BlobCard.tsx
+Error: 
+  × Expression expected
+     ╭─[C:\Users\danrobbins\Code\Personal\blob\components\BlobCard.tsx:167:1]
+ 167 │       }
+ 168 │     },
+ 169 │     [blob.x, blob.y, blob.locked]
+ 170 │   );
+     ·   ─
+ 171 │ 
+ 172 │   const handlePointerMove = useCallback(
+ 172 │     (e: React.PointerEvent) => {
+     ╰────
+
+Caused by:
+    Syntax Error
+
+Import trace for requested module:
+./components/BlobCard.tsx
+./app/page.tsx @ webpack-internal:///(app-pages-browser)/./node_modules/next/dist/client/app-index.js:32
+[  266574ms] [ERROR] ./components/BlobCard.tsx
+Error: 
+  × Expression expected
+     ╭─[C:\Users\danrobbins\Code\Personal\blob\components\BlobCard.tsx:167:1]
+ 167 │       }
+ 168 │     },
+ 169 │     [blob.x, blob.y, blob.locked]
+ 170 │   );
+     ·   ─
+ 171 │ 
+ 172 │   const handlePointerMove = useCallback(
+ 172 │     (e: React.PointerEvent) => {
+     ╰────
+
+Caused by:
+    Syntax Error
+
+Import trace for requested module:
+./components/BlobCard.tsx
+./app/page.tsx @ webpack-internal:///(app-pages-browser)/./node_modules/next/dist/client/app-index.js:32
+[  267078ms] [ERROR] Failed to load resource: the server responded with a status of 500 (Internal Server Error) @ http://localhost:3000/api/ts-errors:0
+[  267122ms] [ERROR] Failed to load resource: the server responded with a status of 500 (Internal Server Error) @ http://localhost:3000/?_rsc=1p60s:0
+[  267184ms] [ERROR] Failed to load resource: the server responded with a status of 500 (Internal Server Error) @ http://localhost:3000/?_rsc=1p60s:0
+[  267296ms] [ERROR] Failed to load resource: the server responded with a status of 500 (Internal Server Error) @ http://localhost:3000/:0
+[  268062ms] ModuleBuildError: Module build failed (from ./node_modules/next/dist/build/webpack/loaders/next-swc-loader.js):
+Error: 
+  × Expression expected
+     ╭─[C:\Users\danrobbins\Code\Personal\blob\components\BlobCard.tsx:167:1]
+ 167 │       }
+ 168 │     },
+ 169 │     [blob.x, blob.y, blob.locked]
+ 170 │   );
+     ·   ─
+ 171 │ 
+ 172 │   const handlePointerMove = useCallback(
+ 172 │     (e: React.PointerEvent) => {
+     ╰────
+
+
+Caused by:
+    Syntax Error
+    at processResult (file://C:\Users\danrobbins\Code\Personal\blob\node_modules\next\dist\compiled\webpack\bundle5.js:28:400590)
+    at <unknown> (file://C:\Users\danrobbins\Code\Personal\blob\node_modules\next\dist\compiled\webpack\bundle5.js:28:402302)
+    at <unknown> (file://C:\Users\danrobbins\Code\Personal\blob\node_modules\next\dist\compiled\loader-runner\LoaderRunner.js:1:8645)
+    at <unknown> (file://C:\Users\danrobbins\Code\Personal\blob\node_modules\next\dist\compiled\loader-runner\LoaderRunner.js:1:5019)
+    at r.callback (file://C:\Users\danrobbins\Code\Personal\blob\node_modules\next\dist\compiled\loader-runner\LoaderRunner.js:1:4039)
+[  268054ms] [ERROR] ./components/BlobCard.tsx
+Error: 
+  × Expression expected
+     ╭─[C:\Users\danrobbins\Code\Personal\blob\components\BlobCard.tsx:167:1]
+ 167 │       }
+ 168 │     },
+ 169 │     [blob.x, blob.y, blob.locked]
+ 170 │   );
+     ·   ─
+ 171 │ 
+ 172 │   const handlePointerMove = useCallback(
+ 172 │     (e: React.PointerEvent) => {
+     ╰────
+
+Caused by:
+    Syntax Error @ webpack-internal:///./node_modules/next/dist/client/components/react-dev-overlay/internal/helpers/hydration-error-info.js:62
+[  268133ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/favicon.ico:0
+[  275193ms] [ERROR] ./components/BlobCard.tsx
+Error: 
+  × Expression expected
+     ╭─[C:\Users\danrobbins\Code\Personal\blob\components\BlobCard.tsx:167:1]
+ 167 │       }
+ 168 │     },
+ 169 │     [blob.x, blob.y, blob.locked]
+ 170 │   );
+     ·   ─
+ 171 │ 
+ 172 │   const handlePointerMove = useCallback(
+ 172 │     (e: React.PointerEvent) => {
+     ╰────
+
+Caused by:
+    Syntax Error
+
+Import trace for requested module:
+./components/BlobCard.tsx
+./app/page.tsx @ webpack-internal:///./node_modules/next/dist/client/components/react-dev-overlay/internal/helpers/hydration-error-info.js:62
+[  275432ms] [ERROR] ./components/BlobCard.tsx
+Error: 
+  × Expression expected
+     ╭─[C:\Users\danrobbins\Code\Personal\blob\components\BlobCard.tsx:167:1]
+ 167 │       }
+ 168 │     },
+ 169 │     [blob.x, blob.y, blob.locked]
+ 170 │   );
+     ·   ─
+ 171 │ 
+ 172 │   const handlePointerMove = useCallback(
+ 172 │     (e: React.PointerEvent) => {
+     ╰────
+
+Caused by:
+    Syntax Error
+
+Import trace for requested module:
+./components/BlobCard.tsx
+./app/page.tsx @ webpack-internal:///./node_modules/next/dist/client/components/react-dev-overlay/internal/helpers/hydration-error-info.js:62
+[  282333ms] [ERROR] ./components/BlobCard.tsx
+Error: 
+  × Expression expected
+     ╭─[C:\Users\danrobbins\Code\Personal\blob\components\BlobCard.tsx:167:1]
+ 167 │       }
+ 168 │     },
+ 169 │     [blob.x, blob.y, blob.locked]
+ 170 │   );
+     ·   ─
+ 171 │ 
+ 172 │   const handlePointerMove = useCallback(
+ 172 │     (e: React.PointerEvent) => {
+     ╰────
+
+Caused by:
+    Syntax Error
+
+Import trace for requested module:
+./components/BlobCard.tsx
+./app/page.tsx @ webpack-internal:///./node_modules/next/dist/client/components/react-dev-overlay/internal/helpers/hydration-error-info.js:62
+[  282663ms] [ERROR] ./components/BlobCard.tsx
+Error: 
+  × Expression expected
+     ╭─[C:\Users\danrobbins\Code\Personal\blob\components\BlobCard.tsx:167:1]
+ 167 │       }
+ 168 │     },
+ 169 │     [blob.x, blob.y, blob.locked]
+ 170 │   );
+     ·   ─
+ 171 │ 
+ 172 │   const handlePointerMove = useCallback(
+ 172 │     (e: React.PointerEvent) => {
+     ╰────
+
+Caused by:
+    Syntax Error
+
+Import trace for requested module:
+./components/BlobCard.tsx
+./app/page.tsx @ webpack-internal:///./node_modules/next/dist/client/components/react-dev-overlay/internal/helpers/hydration-error-info.js:62
+[  308213ms] [ERROR] ./components/BlobCard.tsx
+Error: 
+  × Expression expected
+     ╭─[C:\Users\danrobbins\Code\Personal\blob\components\BlobCard.tsx:167:1]
+ 167 │       }
+ 168 │     },
+ 169 │     [blob.x, blob.y, blob.locked]
+ 170 │   );
+     ·   ─
+ 171 │ 
+ 172 │   const handlePointerMove = useCallback(
+ 172 │     (e: React.PointerEvent) => {
+     ╰────
+
+Caused by:
+    Syntax Error
+
+Import trace for requested module:
+./components/BlobCard.tsx
+./app/page.tsx @ webpack-internal:///./node_modules/next/dist/client/components/react-dev-overlay/internal/helpers/hydration-error-info.js:62
+[  308705ms] [ERROR] ./components/BlobCard.tsx
+Error: 
+  × Expression expected
+     ╭─[C:\Users\danrobbins\Code\Personal\blob\components\BlobCard.tsx:167:1]
+ 167 │       }
+ 168 │     },
+ 169 │     [blob.x, blob.y, blob.locked]
+ 170 │   );
+     ·   ─
+ 171 │ 
+ 172 │   const handlePointerMove = useCallback(
+ 172 │     (e: React.PointerEvent) => {
+     ╰────
+
+Caused by:
+    Syntax Error
+
+Import trace for requested module:
+./components/BlobCard.tsx
+./app/page.tsx @ webpack-internal:///./node_modules/next/dist/client/components/react-dev-overlay/internal/helpers/hydration-error-info.js:62
+[  309407ms] [ERROR] ./components/BlobCard.tsx
+Error: 
+  × Expression expected
+     ╭─[C:\Users\danrobbins\Code\Personal\blob\components\BlobCard.tsx:167:1]
+ 167 │       }
+ 168 │     },
+ 169 │     [blob.x, blob.y, blob.locked]
+ 170 │   );
+     ·   ─
+ 171 │ 
+ 172 │   const handlePointerMove = useCallback(
+ 172 │     (e: React.PointerEvent) => {
+     ╰────
+
+Caused by:
+    Syntax Error
+
+Import trace for requested module:
+./components/BlobCard.tsx
+./app/page.tsx @ webpack-internal:///./node_modules/next/dist/client/components/react-dev-overlay/internal/helpers/hydration-error-info.js:62
+[  309752ms] [ERROR] ./components/BlobCard.tsx
+Error: 
+  × Expression expected
+     ╭─[C:\Users\danrobbins\Code\Personal\blob\components\BlobCard.tsx:167:1]
+ 167 │       }
+ 168 │     },
+ 169 │     [blob.x, blob.y, blob.locked]
+ 170 │   );
+     ·   ─
+ 171 │ 
+ 172 │   const handlePointerMove = useCallback(
+ 172 │     (e: React.PointerEvent) => {
+     ╰────
+
+Caused by:
+    Syntax Error
+
+Import trace for requested module:
+./components/BlobCard.tsx
+./app/page.tsx @ webpack-internal:///./node_modules/next/dist/client/components/react-dev-overlay/internal/helpers/hydration-error-info.js:62
+[  316182ms] [ERROR] WebSocket connection to 'ws://localhost:3000/_next/webpack-hmr' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ webpack-internal:///./node_modules/next/dist/client/components/react-dev-overlay/pages/websocket.js:63
+[  319528ms] [ERROR] WebSocket connection to 'ws://localhost:3000/_next/webpack-hmr' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ webpack-internal:///./node_modules/next/dist/client/components/react-dev-overlay/pages/websocket.js:63
+[  322872ms] [ERROR] WebSocket connection to 'ws://localhost:3000/_next/webpack-hmr' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ webpack-internal:///./node_modules/next/dist/client/components/react-dev-overlay/pages/websocket.js:63
+[  326216ms] [ERROR] WebSocket connection to 'ws://localhost:3000/_next/webpack-hmr' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ webpack-internal:///./node_modules/next/dist/client/components/react-dev-overlay/pages/websocket.js:63
+[  329555ms] [ERROR] WebSocket connection to 'ws://localhost:3000/_next/webpack-hmr' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ webpack-internal:///./node_modules/next/dist/client/components/react-dev-overlay/pages/websocket.js:63
+[  336905ms] [ERROR] WebSocket connection to 'ws://localhost:3000/_next/webpack-hmr' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ webpack-internal:///./node_modules/next/dist/client/components/react-dev-overlay/pages/websocket.js:63
+[  344254ms] [ERROR] WebSocket connection to 'ws://localhost:3000/_next/webpack-hmr' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ webpack-internal:///./node_modules/next/dist/client/components/react-dev-overlay/pages/websocket.js:63
+[  351602ms] [ERROR] WebSocket connection to 'ws://localhost:3000/_next/webpack-hmr' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ webpack-internal:///./node_modules/next/dist/client/components/react-dev-overlay/pages/websocket.js:63
+[  358943ms] [ERROR] WebSocket connection to 'ws://localhost:3000/_next/webpack-hmr' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ webpack-internal:///./node_modules/next/dist/client/components/react-dev-overlay/pages/websocket.js:63
+[  366277ms] [ERROR] WebSocket connection to 'ws://localhost:3000/_next/webpack-hmr' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ webpack-internal:///./node_modules/next/dist/client/components/react-dev-overlay/pages/websocket.js:63
+[  373641ms] [ERROR] WebSocket connection to 'ws://localhost:3000/_next/webpack-hmr' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ webpack-internal:///./node_modules/next/dist/client/components/react-dev-overlay/pages/websocket.js:63
+[  382387ms] [ERROR] WebSocket connection to 'ws://localhost:3000/_next/webpack-hmr' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ webpack-internal:///./node_modules/next/dist/client/components/react-dev-overlay/pages/websocket.js:63
+[  389831ms] [ERROR] WebSocket connection to 'ws://localhost:3000/_next/webpack-hmr' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ webpack-internal:///./node_modules/next/dist/client/components/react-dev-overlay/pages/websocket.js:63
+[  397188ms] [ERROR] WebSocket connection to 'ws://localhost:3000/_next/webpack-hmr' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ webpack-internal:///./node_modules/next/dist/client/components/react-dev-overlay/pages/websocket.js:63
+[  404553ms] [ERROR] WebSocket connection to 'ws://localhost:3000/_next/webpack-hmr' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ webpack-internal:///./node_modules/next/dist/client/components/react-dev-overlay/pages/websocket.js:63
+[  411919ms] [ERROR] WebSocket connection to 'ws://localhost:3000/_next/webpack-hmr' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ webpack-internal:///./node_modules/next/dist/client/components/react-dev-overlay/pages/websocket.js:63
+[  419282ms] [ERROR] WebSocket connection to 'ws://localhost:3000/_next/webpack-hmr' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ webpack-internal:///./node_modules/next/dist/client/components/react-dev-overlay/pages/websocket.js:63
+[  426659ms] [ERROR] WebSocket connection to 'ws://localhost:3000/_next/webpack-hmr' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ webpack-internal:///./node_modules/next/dist/client/components/react-dev-overlay/pages/websocket.js:63
+[  434063ms] [ERROR] WebSocket connection to 'ws://localhost:3000/_next/webpack-hmr' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ webpack-internal:///./node_modules/next/dist/client/components/react-dev-overlay/pages/websocket.js:63
+[  441442ms] [ERROR] WebSocket connection to 'ws://localhost:3000/_next/webpack-hmr' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ webpack-internal:///./node_modules/next/dist/client/components/react-dev-overlay/pages/websocket.js:63
+[  448831ms] [ERROR] WebSocket connection to 'ws://localhost:3000/_next/webpack-hmr' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ webpack-internal:///./node_modules/next/dist/client/components/react-dev-overlay/pages/websocket.js:63
+[  456212ms] [ERROR] WebSocket connection to 'ws://localhost:3000/_next/webpack-hmr' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ webpack-internal:///./node_modules/next/dist/client/components/react-dev-overlay/pages/websocket.js:63
+[  463671ms] [ERROR] WebSocket connection to 'ws://localhost:3000/_next/webpack-hmr' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ webpack-internal:///./node_modules/next/dist/client/components/react-dev-overlay/pages/websocket.js:63
+[  471102ms] [ERROR] WebSocket connection to 'ws://localhost:3000/_next/webpack-hmr' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ webpack-internal:///./node_modules/next/dist/client/components/react-dev-overlay/pages/websocket.js:63
+[  478643ms] [ERROR] WebSocket connection to 'ws://localhost:3000/_next/webpack-hmr' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ webpack-internal:///./node_modules/next/dist/client/components/react-dev-overlay/pages/websocket.js:63

@@ -50,4 +50,5 @@ const dev = spawn("npm", ["run", "dev"], {
 });
 dev.unref();
 
-console.log("Dev server starting. Use Cursor Browser to open http://localhost:3000 (or :3001 if 3000 is in use).");
+console.log("Dev server starting on port 3000.");
+console.log("(When run via runapp/restartall, the agent will open or refresh Cursor Browser to http://localhost:3000.)");

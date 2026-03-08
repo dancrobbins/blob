@@ -1,6 +1,18 @@
 .wrapper {
   position: absolute;
   touch-action: none;
+  pointer-events: auto;
+}
+
+/* Card body only (in canvas layer); controls are portaled to overlay */
+.cardBodyWrapper {
+  position: absolute;
+  touch-action: none;
+}
+
+/* Dragger cue: portaled controls wrapper when dragging */
+.wrapper[data-dragging] {
+  z-index: 100;
 }
 
 .card {
@@ -43,9 +55,31 @@
   box-shadow: none;
 }
 
-.controlWrap {
+.controlsColumn {
   position: absolute;
+  top: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
   overflow: visible;
+}
+
+/* Continuous hit area so hover doesn’t flash when moving between dragger, "..." and the blob */
+.controlsColumnHitArea {
+  position: absolute;
+  top: -5px;
+  left: -5px;
+  bottom: -5px;
+  right: -24px; /* extend toward blob to bridge SCREEN_GAP + buffer */
+  pointer-events: auto;
+  z-index: 0;
+}
+
+.controlWrap {
+  position: relative;
+  overflow: visible;
+  z-index: 1;
 }
 
 .dragHandle {
@@ -62,9 +96,12 @@
   -webkit-tap-highlight-color: transparent;
   opacity: 0;
   transition: opacity 0.15s ease;
+  pointer-events: auto;
+  background: var(--blob-control-bg, rgba(255, 255, 255, 0.95));
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
 }
 
-.wrapper:hover .dragHandle {
+.wrapper[data-hovered] .dragHandle {
   opacity: 1;
 }
 
@@ -85,6 +122,8 @@
 
 [data-theme="dark"] .dragHandle {
   --muted: #888;
+  --blob-control-bg: rgba(40, 40, 40, 0.95);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
 }
 
 [data-theme="dark"] .dragHandle:hover {
@@ -101,19 +140,43 @@
   line-height: 1.5;
   color: var(--fg, #111);
   outline: none;
-  white-space: pre-wrap;
   word-break: break-word;
+}
+
+.line {
+  display: flex;
+  align-items: flex-start;
+  min-height: 1.5em;
+  white-space: pre-wrap;
+}
+
+.line[data-indent="1"] { padding-left: 1.25em; }
+.line[data-indent="2"] { padding-left: 2.5em; }
+.line[data-indent="3"] { padding-left: 3.75em; }
+.line[data-indent="4"] { padding-left: 5em; }
+.line[data-indent="5"] { padding-left: 6.25em; }
+
+.bullet {
+  flex-shrink: 0;
+  user-select: none;
+  color: var(--fg, #111);
+}
+
+.lineText {
+  flex: 1;
+  min-width: 0;
 }
 
 .menuWrap {
   position: relative;
   flex-shrink: 0;
+  z-index: 1;
 }
 
 .menuButton {
   width: 28px;
   height: 28px;
-  margin: -2px -4px 0 0;
+  margin: 0;
   padding: 0;
   display: flex;
   align-items: center;
@@ -121,16 +184,17 @@
   font-size: 16px;
   line-height: 1;
   color: var(--muted, #888);
-  background: transparent;
+  background: var(--blob-control-bg, rgba(255, 255, 255, 0.95));
   border: none;
   border-radius: 6px;
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
   opacity: 0;
   transition: opacity 0.15s ease;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
 }
 
-.card:hover .menuButton,
+.wrapper[data-hovered] .menuButton,
 .menuButton[aria-expanded="true"] {
   opacity: 1;
 }
@@ -146,6 +210,11 @@
   color: var(--fg, #333);
 }
 
+[data-theme="dark"] .menuButton {
+  --blob-control-bg: rgba(40, 40, 40, 0.95);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+}
+
 [data-theme="dark"] .menuButton:hover {
   --hover-bg: rgba(255, 255, 255, 0.08);
   --fg: #ddd;
@@ -156,7 +225,8 @@
   top: 100%;
   right: 0;
   margin-top: 2px;
-  min-width: 120px;
+  width: max-content;
+  min-width: 0;
   padding: 4px;
   background: var(--menu-bg, #fff);
   border-radius: 8px;
@@ -182,6 +252,7 @@
   cursor: pointer;
   border-radius: 6px;
   -webkit-tap-highlight-color: transparent;
+  box-sizing: border-box;
 }
 
 [data-theme="dark"] .blobMenuItem {
@@ -216,11 +287,6 @@
   --fg: #eee;
 }
 
-.content:empty::before {
-  content: "• ";
-  color: var(--muted, #999);
-}
-
-[data-theme="dark"] .content:empty::before {
-  --muted: #666;
+[data-theme="dark"] .bullet {
+  color: #eee;
 }

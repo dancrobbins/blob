@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { Suspense } from "react";
 import "./globals.css";
 import { BlobsProvider } from "@/contexts/BlobsContext";
 import { ThemeApplied } from "@/components/ThemeApplied";
@@ -6,6 +7,7 @@ import { TypeScriptErrorsDebug } from "@/components/TypeScriptErrorsDebug";
 import { AuthHashRedirect } from "@/components/AuthHashRedirect";
 import { AppErrorBoundary } from "@/components/AppErrorBoundary";
 import { ConnectivityGuard } from "@/components/ConnectivityGuard";
+import { E2ESyncOverlay } from "@/components/e2e/E2ESyncOverlay";
 
 export const metadata: Metadata = {
   title: "blob",
@@ -33,6 +35,9 @@ export default function RootLayout({
             <ConnectivityGuard>
               <AuthHashRedirect />
               <ThemeApplied>{children}</ThemeApplied>
+              <Suspense fallback={null}>
+                <E2ESyncOverlay />
+              </Suspense>
               <TypeScriptErrorsDebug />
             </ConnectivityGuard>
           </BlobsProvider>

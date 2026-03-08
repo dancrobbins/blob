@@ -45,6 +45,7 @@ export function ConfirmDialog({
             ref={cancelRef}
             type="button"
             className={styles.cancel}
+            data-testid="confirm-dialog-cancel"
             onClick={onCancel}
           >
             Cancel
@@ -52,6 +53,7 @@ export function ConfirmDialog({
           <button
             type="button"
             className={styles.confirm}
+            data-testid="confirm-dialog-confirm"
             onClick={onConfirm}
           >
             Delete

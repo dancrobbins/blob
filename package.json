@@ -14,18 +14,25 @@
     "runapp": "node scripts/runapp.js",
     "runall": "node scripts/runapp.js",
     "reloadapp": "node scripts/runapp.js",
+    "rerunapp": "node scripts/runapp.js",
     "restartall": "node scripts/restartall.js",
     "pushme": "node scripts/pushme.js",
-    "pushall": "node scripts/pushme.js"
+    "pushall": "node scripts/pushme.js",
+    "testSync": "node scripts/test-sync.js",
+    "test:sync": "npx playwright test tests/e2e/google-sync-two-tab.spec.ts",
+    "test:sync:ci": "node scripts/write-playwright-auth-state.js && npx playwright test tests/e2e/google-sync-two-tab.spec.ts --project=ci"
   },
   "devDependencies": {
+    "@playwright/test": "^1.58.2",
     "@types/node": "^25.3.5",
     "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
     "png-to-ico": "^2.1.2",
     "sharp": "^0.33.5",
     "typescript": "^5.9.3"
   },
   "dependencies": {
+    "@google/generative-ai": "^0.21.0",
     "@supabase/supabase-js": "^2.98.0",
     "next": "^14.2.35",
     "react": "^18.3.1",

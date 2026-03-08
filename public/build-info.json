@@ -1,8 +1,8 @@
 {
-  "buildNumber": 60,
-  "buildTime": "2026-03-08T07:15:58.232Z",
+  "buildNumber": 121,
+  "buildTime": "2026-03-08T18:10:11.959Z",
   "version": "1.0.0",
   "updates": [
-    "Replaced solid circle behind Blobby with assets/graphics/blobby backer 01.svg; sync script now copies graphics to public."
+    "When Gemini rate limit is hit, Blobby says: \"The AI limit has been reached. Try again tomorrow.\""
   ]
 }

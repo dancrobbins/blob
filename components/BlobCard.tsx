@@ -1,9 +1,23 @@
 "use client";
 
-import React, { useRef, useState, useCallback, useEffect } from "react";
-import type { Blob } from "@/lib/types";
+import React, { useRef, useState, useCallback, useEffect, useLayoutEffect } from "react";
+import { createPortal } from "react-dom";
+import type { Blob, BlobLine } from "@/lib/types";
+import { normalizeBlob } from "@/lib/blob-lines";
+import {
+  BLOB_CLIPBOARD_MIME,
+  linesToClipboardData,
+  linesToPlainTextWithBullets,
+  linesToHtml,
+  parseBlobClipboardData,
+  parsePastedContent,
+} from "@/lib/blob-lines";
 import { useBlobsContext } from "@/contexts/BlobsContext";
+import { useControlsPortal } from "@/contexts/ControlsPortalContext";
+import { usePopupPortal } from "@/contexts/PopupPortalContext";
 import styles from "./BlobCard.module.css";
+
+const BULLET_TEXT = "• ";
 
 /** Keys that commit one undo step (word boundary): space, punctuation, Enter, or delete-word. */
 function isWordBoundaryKey(key: string, ctrlOrMeta: boolean): boolean {
@@ -13,34 +27,105 @@ function isWordBoundaryKey(key: string, ctrlOrMeta: boolean): boolean {
   return false;
 }
 
-const BULLET = "• ";
-
-function getCaretPosition(div: HTMLDivElement): number {
-  const sel = window.getSelection();
-  if (!sel || sel.rangeCount === 0) return 0;
-  const range = sel.getRangeAt(0);
-  const preCaretRange = range.cloneRange();
-  preCaretRange.selectNodeContents(div);
-  preCaretRange.setEnd(range.endContainer, range.endOffset);
-  return preCaretRange.toString().length;
+function readLinesFromContentEl(container: HTMLDivElement): BlobLine[] {
+  const lineDivs = container.querySelectorAll<HTMLDivElement>("[data-line-index]");
+  if (lineDivs.length === 0) {
+    const raw = (container.innerText ?? "").replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+    const parsed = raw.split("\n").map((line) => {
+      const t = line.trimStart();
+      if (t.startsWith(BULLET_TEXT)) return { text: t.slice(BULLET_TEXT.length), style: "bullet" as const };
+      return { text: line.replace(/^\s+/, ""), style: "bullet" as const };
+    });
+    return parsed.length > 0 ? parsed : [{ text: "", style: "bullet" }];
+  }
+  const lines: BlobLine[] = [];
+  lineDivs.forEach((div) => {
+    const style = (div.getAttribute("data-style") as BlobLine["style"]) ?? "bullet";
+    const bulletSpan = div.querySelector("[data-bullet]");
+    const textEl = bulletSpan?.nextElementSibling ?? div;
+    const text = (textEl.textContent ?? "").replace(/\u200b/g, "").trimEnd();
+    const indentRaw = div.getAttribute("data-indent");
+    const indent = indentRaw != null ? Math.max(0, parseInt(indentRaw, 10) || 0) : 0;
+    lines.push({
+      text,
+      style,
+      ...(indent > 0 ? { indent } : {}),
+      ...(style === "todo" ? { checked: div.getAttribute("data-checked") === "true" } : {}),
+    });
+  });
+  return lines;
 }
 
-function setCaretPosition(div: HTMLDivElement, offset: number) {
+function buildContentFromLines(container: HTMLDivElement, lines: BlobLine[]) {
+  container.innerHTML = "";
+  const list = lines.length > 0 ? lines : [{ text: "", style: "bullet" as const }];
+  list.forEach((line, i) => {
+    const div = document.createElement("div");
+    div.className = styles.line;
+    div.setAttribute("data-line-index", String(i));
+    div.setAttribute("data-style", line.style ?? "bullet");
+    const indent = Math.max(0, line.indent ?? 0);
+    div.setAttribute("data-indent", String(indent));
+    if (line.style === "todo" && line.checked != null) div.setAttribute("data-checked", String(line.checked));
+
+    const bullet = document.createElement("span");
+    bullet.className = styles.bullet;
+    bullet.setAttribute("data-bullet", "");
+    bullet.contentEditable = "false";
+    bullet.textContent = BULLET_TEXT;
+
+    const textSpan = document.createElement("span");
+    textSpan.className = styles.lineText;
+    textSpan.textContent = line.text || "\u200b"; // zero-width space so line is focusable when empty
+
+    div.appendChild(bullet);
+    div.appendChild(textSpan);
+    container.appendChild(div);
+  });
+}
+
+/** Return true if the selection is collapsed and the caret is "before" the bullet (in the bullet span or at offset 0 of line text). */
+function isCaretBeforeBullet(container: HTMLDivElement): boolean {
   const sel = window.getSelection();
-  if (!sel) return;
-  let current = 0;
+  if (!sel || !sel.isCollapsed || sel.rangeCount === 0) return false;
+  const range = sel.getRangeAt(0);
+  const node = range.startContainer;
+  if (node.nodeType === Node.TEXT_NODE) {
+    const parent = node.parentElement;
+    if (!parent || !container.contains(parent)) return false;
+    const lineDiv = parent.closest<HTMLDivElement>("[data-line-index]");
+    if (!lineDiv) return false;
+    const bulletSpan = lineDiv.querySelector("[data-bullet]");
+    if (!bulletSpan) return false;
+    if (parent === bulletSpan) return true;
+    if (bulletSpan.nextSibling === parent && range.startOffset === 0) return true;
+    return false;
+  }
+  const el = node as HTMLElement;
+  if (el.hasAttribute?.("data-bullet")) return true;
+  if (container.contains(el)) {
+    const lineDiv = el.closest<HTMLDivElement>("[data-line-index]");
+    if (!lineDiv) return false;
+    const bulletSpan = lineDiv.querySelector("[data-bullet]");
+    return bulletSpan?.contains(el) ?? false;
+  }
+  return false;
+}
+
+function getTextOffsetIn(container: Node, target: Node, targetOffset: number): number {
+  let offset = 0;
   const walk = (node: Node): boolean => {
-    if (node.nodeType === Node.TEXT_NODE) {
-      const len = (node.textContent ?? "").length;
-      if (current + len >= offset) {
-        const range = document.createRange();
-        range.setStart(node, Math.min(offset - current, len));
-        range.collapse(true);
-        sel.removeAllRanges();
-        sel.addRange(range);
-        return true;
+    if (node === target) {
+      if (node.nodeType === Node.TEXT_NODE) offset += targetOffset;
+      else {
+        for (let i = 0; i < targetOffset && i < node.childNodes.length; i++) {
+          offset += (node.childNodes[i].textContent ?? "").length;
+        }
       }
-      current += len;
+      return true;
+    }
+    if (node.nodeType === Node.TEXT_NODE) {
+      offset += (node.textContent ?? "").length;
       return false;
     }
     for (let i = 0; i < node.childNodes.length; i++) {
@@ -48,7 +133,47 @@ function setCaretPosition(div: HTMLDivElement, offset: number) {
     }
     return false;
   };
-  walk(div);
+  walk(container);
+  return offset;
+}
+
+/** Move caret to immediately after the bullet of the first line (or the line containing the current selection). */
+function moveCaretAfterBullet(container: HTMLDivElement) {
+  const sel = window.getSelection();
+  if (!sel) return;
+  const lineDiv = container.querySelector<HTMLDivElement>("[data-line-index]");
+  if (!lineDiv) return;
+  const bulletSpan = lineDiv.querySelector("[data-bullet]");
+  const textSpan = bulletSpan?.nextElementSibling ?? lineDiv;
+  const target = textSpan.nodeType === Node.TEXT_NODE ? textSpan : textSpan.firstChild ?? textSpan;
+  const range = document.createRange();
+  range.setStart(target, 0);
+  range.collapse(true);
+  sel.removeAllRanges();
+  sel.addRange(range);
+}
+
+/** Place caret at a given line index and character offset (after DOM rebuild). */
+function placeCaretInLine(container: HTMLDivElement, lineIndex: number, offset: number) {
+  const lineDiv = container.children[lineIndex] as HTMLDivElement | undefined;
+  if (!lineDiv) return;
+  const textSpan = lineDiv.querySelector("[data-bullet]")?.nextElementSibling;
+  if (!textSpan) return;
+  const node = textSpan.firstChild ?? textSpan;
+  const len = (node.textContent ?? "").length;
+  const r = document.createRange();
+  r.setStart(node, Math.min(offset, len));
+  r.collapse(true);
+  const sel = window.getSelection();
+  if (sel) {
+    sel.removeAllRanges();
+    sel.addRange(r);
+  }
+}
+
+/** Cross-platform: Ctrl+Alt on Windows, Ctrl+Option on Mac. */
+function isCtrlAlt(e: React.KeyboardEvent) {
+  return e.ctrlKey && e.altKey;
 }
 
 export function BlobCard({
@@ -60,6 +185,7 @@ export function BlobCard({
   onFocus,
   onDuplicate,
   onDelete,
+  onHide,
   onLock,
   onUnlock,
   scale = 1,
@@ -68,28 +194,52 @@ export function BlobCard({
   blob: Blob;
   autoFocus?: boolean;
   onAutoFocusDone?: () => void;
-  onUpdate: (content: string) => void;
+  onUpdate: (lines: BlobLine[]) => void;
   onPosition: (x: number, y: number) => void;
   onFocus: () => void;
   onDuplicate: () => void;
   onDelete: () => void;
+  onHide?: () => void;
   onLock: () => void;
   onUnlock: () => void;
   scale?: number;
   isSelected?: boolean;
 }) {
-  const { pushUndoSnapshot } = useBlobsContext();
+  const { pushUndoSnapshot, incrementMenuOpen, decrementMenuOpen } = useBlobsContext();
   const cardRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
+  const menuButtonRef = useRef<HTMLButtonElement>(null);
+  const portaledMenuRef = useRef<HTMLDivElement>(null);
   const [isDragging, setIsDragging] = useState(false);
+  const [isHovered, setIsHovered] = useState(false);
+  const hoverLeaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [dropdownPosition, setDropdownPosition] = useState<{ top: number; left: number } | null>(null);
   const dragStart = useRef({ x: 0, y: 0, blobX: 0, blobY: 0 });
+  const popupPortal = usePopupPortal();
+
+  useLayoutEffect(() => {
+    if (!menuOpen) {
+      setDropdownPosition(null);
+      return;
+    }
+    const rect = menuButtonRef.current?.getBoundingClientRect();
+    if (rect) {
+      setDropdownPosition({
+        top: rect.bottom + 2,
+        left: rect.right,
+      });
+    }
+  }, [menuOpen]);
 
   useEffect(() => {
     if (!menuOpen) return;
     const close = (e: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+      const target = e.target as Node;
+      const inButton = menuRef.current?.contains(target);
+      const inPortaledMenu = portaledMenuRef.current?.contains(target);
+      if (!inButton && !inPortaledMenu) {
         setMenuOpen(false);
       }
     };
@@ -104,17 +254,43 @@ export function BlobCard({
   }, []);
 
   useEffect(() => {
+    if (!menuOpen) return;
+    incrementMenuOpen();
+    return () => decrementMenuOpen();
+  }, [menuOpen, incrementMenuOpen, decrementMenuOpen]);
+
+  useEffect(() => {
+    const el = contentRef.current;
+    if (!el) return;
+    const enforceCaretNotBeforeBullet = () => {
+      if (!document.contains(el)) return;
+      const sel = window.getSelection();
+      if (!sel || sel.rangeCount === 0) return;
+      if (!el.contains(sel.anchorNode)) return;
+      if (isCaretBeforeBullet(el)) moveCaretAfterBullet(el);
+    };
+    document.addEventListener("selectionchange", enforceCaretNotBeforeBullet);
+    return () => document.removeEventListener("selectionchange", enforceCaretNotBeforeBullet);
+  }, []);
+
+  useEffect(() => {
     if (!autoFocus || !contentRef.current) return;
     const el = contentRef.current;
     el.focus();
-    const placeCaretAfterBullet = () => {
-      if (!el.innerText?.startsWith(BULLET)) return;
-      setCaretPosition(el, BULLET.length);
-    };
+    const placeCaretAfterBullet = () => moveCaretAfterBullet(el);
     placeCaretAfterBullet();
     requestAnimationFrame(placeCaretAfterBullet);
     onAutoFocusDone?.();
   }, [autoFocus, onAutoFocusDone]);
+
+  const handleMouseEnter = useCallback(() => {
+    if (hoverLeaveTimer.current) clearTimeout(hoverLeaveTimer.current);
+    setIsHovered(true);
+  }, []);
+
+  const handleMouseLeave = useCallback(() => {
+    hoverLeaveTimer.current = setTimeout(() => setIsHovered(false), 80);
+  }, []);
 
   const handlePointerDown = useCallback(
     (e: React.PointerEvent) => {
@@ -160,50 +336,136 @@ export function BlobCard({
   const handleInput = useCallback(() => {
     const el = contentRef.current;
     if (!el) return;
-    let text = (el.innerText ?? "").replace(/\r\n/g, "\n").replace(/\r/g, "\n");
-    if (text.length > 0 && !text.startsWith(BULLET)) {
-      text = BULLET + text.replace(/^\s*/, "");
-      el.innerText = text;
-      setCaretPosition(el, text.length);
-    }
-    onUpdate(text);
+    const lines = readLinesFromContentEl(el);
+    onUpdate(lines);
   }, [onUpdate]);
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLDivElement>) => {
+      const el = contentRef.current;
+      if (!el) return;
+
+      if (e.key === "ArrowLeft") {
+        if (isCaretBeforeBullet(el)) {
+          e.preventDefault();
+          moveCaretAfterBullet(el);
+        }
+        return;
+      }
+
+      const startEl: Element | null =
+        (() => {
+          const sel = window.getSelection();
+          if (!sel || sel.rangeCount === 0) return null;
+          const node = sel.getRangeAt(0).startContainer;
+          return node.nodeType === Node.TEXT_NODE ? node.parentElement : (node as Element);
+        })();
+      const currentLineDiv = startEl?.closest<HTMLDivElement>("[data-line-index]");
+      const isInContent = currentLineDiv && currentLineDiv.parentElement === el;
+      const currentIndex = isInContent ? Array.from(el.children).indexOf(currentLineDiv) : -1;
+      const textSpan = currentLineDiv?.querySelector("[data-bullet]")?.nextElementSibling;
+      const cursorOffset =
+        textSpan && window.getSelection()?.rangeCount
+          ? getTextOffsetIn(textSpan, window.getSelection()!.getRangeAt(0).startContainer, window.getSelection()!.getRangeAt(0).startOffset)
+          : 0;
+
+      if (isCtrlAlt(e) && e.key === "ArrowUp" && currentIndex > 0) {
+        e.preventDefault();
+        const lines = readLinesFromContentEl(el);
+        const swapped = [...lines];
+        [swapped[currentIndex - 1], swapped[currentIndex]] = [swapped[currentIndex], swapped[currentIndex - 1]];
+        buildContentFromLines(el, swapped);
+        placeCaretInLine(el, currentIndex - 1, cursorOffset);
+        onUpdate(readLinesFromContentEl(el));
+        return;
+      }
+      if (isCtrlAlt(e) && e.key === "ArrowDown" && currentIndex >= 0 && currentIndex < el.children.length - 1) {
+        e.preventDefault();
+        const lines = readLinesFromContentEl(el);
+        const swapped = [...lines];
+        [swapped[currentIndex], swapped[currentIndex + 1]] = [swapped[currentIndex + 1], swapped[currentIndex]];
+        buildContentFromLines(el, swapped);
+        placeCaretInLine(el, currentIndex + 1, cursorOffset);
+        onUpdate(readLinesFromContentEl(el));
+        return;
+      }
+      if (e.key === "Tab") {
+        if (currentIndex < 0) return;
+        e.preventDefault();
+        const lines = readLinesFromContentEl(el);
+        const line = lines[currentIndex];
+        if (e.shiftKey) {
+          const currentIndent = line.indent ?? 0;
+          if (currentIndent === 0) return;
+          const nextIndent = currentIndent - 1;
+          const updated = [...lines];
+          updated[currentIndex] = { ...line, indent: nextIndent > 0 ? nextIndent : undefined };
+          buildContentFromLines(el, updated);
+          placeCaretInLine(el, currentIndex, cursorOffset);
+          onUpdate(readLinesFromContentEl(el));
+        } else {
+          const nextIndent = (line.indent ?? 0) + 1;
+          const updated = [...lines];
+          updated[currentIndex] = { ...line, indent: nextIndent };
+          buildContentFromLines(el, updated);
+          placeCaretInLine(el, currentIndex, cursorOffset);
+          onUpdate(readLinesFromContentEl(el));
+        }
+        return;
+      }
+
       if (isWordBoundaryKey(e.key, e.ctrlKey || e.metaKey)) {
         pushUndoSnapshot();
       }
       if (e.key === "Enter") {
         e.preventDefault();
-        const el = contentRef.current;
-        if (!el) return;
-
         const sel = window.getSelection();
         if (!sel || sel.rangeCount === 0) return;
 
-        // Delete any selected text first
         const range = sel.getRangeAt(0);
         range.deleteContents();
 
-        // Insert "\n• " at the caret position directly in the DOM
-        const insertText = "\n" + BULLET;
-        const textNode = document.createTextNode(insertText);
-        range.insertNode(textNode);
+        const startEl: Element | null =
+          range.startContainer.nodeType === Node.TEXT_NODE
+            ? range.startContainer.parentElement
+            : (range.startContainer as Element);
+        const lineDiv = startEl?.closest<HTMLDivElement>("[data-line-index]");
+        if (!lineDiv || lineDiv.parentElement !== el) return;
 
-        // Move caret to end of the inserted text
-        range.setStartAfter(textNode);
-        range.collapse(true);
+        const bulletSpan = lineDiv.querySelector("[data-bullet]");
+        const textSpan = bulletSpan?.nextElementSibling;
+        const style = (lineDiv.getAttribute("data-style") as BlobLine["style"]) ?? "bullet";
+        const indentRaw = lineDiv.getAttribute("data-indent");
+        const indent = indentRaw != null ? Math.max(0, parseInt(indentRaw, 10) || 0) : 0;
+
+        const newLineDiv = document.createElement("div");
+        newLineDiv.className = styles.line;
+        newLineDiv.setAttribute("data-line-index", String(el.children.length));
+        newLineDiv.setAttribute("data-style", style);
+        newLineDiv.setAttribute("data-indent", String(indent));
+        const newBullet = document.createElement("span");
+        newBullet.className = styles.bullet;
+        newBullet.setAttribute("data-bullet", "");
+        newBullet.contentEditable = "false";
+        newBullet.textContent = BULLET_TEXT;
+        const newTextSpan = document.createElement("span");
+        newTextSpan.className = styles.lineText;
+        newTextSpan.textContent = "\u200b";
+        newLineDiv.appendChild(newBullet);
+        newLineDiv.appendChild(newTextSpan);
+
+        const nextLine = lineDiv.nextElementSibling;
+        if (nextLine) el.insertBefore(newLineDiv, nextLine);
+        else el.appendChild(newLineDiv);
+
+        const r = document.createRange();
+        r.setStart(newTextSpan, 0);
+        r.collapse(true);
         sel.removeAllRanges();
-        sel.addRange(range);
+        sel.addRange(r);
 
-        // Normalize so the DOM doesn't have fragmented text nodes that
-        // confuse innerText reading later
-        el.normalize();
-
-        // Re-read the final text and notify
-        const newText = (el.innerText ?? "").replace(/\r\n/g, "\n").replace(/\r/g, "\n");
-        onUpdate(newText);
+        const lines = readLinesFromContentEl(el);
+        onUpdate(lines);
       }
     },
     [onUpdate, pushUndoSnapshot]
@@ -216,76 +478,207 @@ export function BlobCard({
   const handleBlur = useCallback(() => {
     const el = contentRef.current;
     if (!el) return;
-    let text = (el.innerText ?? "").replace(/\r\n/g, "\n").replace(/\r/g, "\n").trim();
-    if (!text) text = BULLET;
-    else if (!text.startsWith(BULLET)) text = BULLET + " " + text;
-    el.innerText = text;
-    onUpdate(text);
+    let lines = readLinesFromContentEl(el);
+    if (lines.length === 0 || lines.every((l) => !l.text.trim())) {
+      lines = [{ text: "", style: "bullet" }];
+      buildContentFromLines(el, lines);
+    }
+    onUpdate(lines);
   }, [onUpdate]);
 
-  useEffect(() => {
+  const handlePaste = useCallback(
+    (e: React.ClipboardEvent) => {
+      const el = contentRef.current;
+      if (!el) return;
+      const html = e.clipboardData.getData("text/html");
+      const text = e.clipboardData.getData("text/plain");
+      const blobData = e.clipboardData.getData(BLOB_CLIPBOARD_MIME);
+      const pasted = parseBlobClipboardData(blobData) ?? parsePastedContent(html || null, text);
+      if (pasted.length === 0) return;
+      e.preventDefault();
+      const sel = window.getSelection();
+      if (!sel || sel.rangeCount === 0) return;
+      const range = sel.getRangeAt(0);
+      const startEl: Element | null =
+        range.startContainer.nodeType === Node.TEXT_NODE
+          ? range.startContainer.parentElement
+          : (range.startContainer as Element);
+      const lineDiv = startEl?.closest<HTMLDivElement>("[data-line-index]");
+      if (!lineDiv || lineDiv.parentElement !== el) return;
+      const insertAtLineIndex = Array.from(el.children).indexOf(lineDiv);
+      const textSpan = lineDiv.querySelector("[data-bullet]")?.nextElementSibling;
+      const cursorOffset =
+        textSpan && range.startContainer === textSpan
+          ? range.startOffset
+          : textSpan?.contains(range.startContainer)
+            ? getTextOffsetIn(textSpan, range.startContainer, range.startOffset)
+            : 0;
+      range.deleteContents();
+      const existingLines = readLinesFromContentEl(el);
+      const current = existingLines[insertAtLineIndex] ?? { text: "", style: "bullet" as const };
+      const lineStart = current.text.slice(0, cursorOffset);
+      const lineEnd = current.text.slice(cursorOffset);
+      const newLines: BlobLine[] = [
+        ...existingLines.slice(0, insertAtLineIndex),
+        { text: lineStart + (pasted[0]?.text ?? ""), style: current.style ?? "bullet" },
+        ...pasted.slice(1).map((l) => ({ ...l, style: (l.style ?? "bullet") as BlobLine["style"] })),
+        ...(lineEnd ? [{ text: lineEnd, style: "bullet" as const }] : []),
+        ...existingLines.slice(insertAtLineIndex + 1),
+      ];
+      buildContentFromLines(el, newLines);
+      const lastPastedLineIndex = insertAtLineIndex + pasted.length - 1;
+      const newLineDiv = el.children[lastPastedLineIndex + (lineEnd ? 1 : 0)] as HTMLDivElement | undefined;
+      const newTextSpan = newLineDiv?.querySelector("[data-bullet]")?.nextElementSibling;
+      const node = newTextSpan?.firstChild ?? newTextSpan;
+      if (node) {
+        const len = (pasted[pasted.length - 1]?.text ?? "").length;
+        const r = document.createRange();
+        r.setStart(node, Math.min(len, (node.textContent ?? "").length));
+        r.collapse(true);
+        sel.removeAllRanges();
+        sel.addRange(r);
+      }
+      onUpdate(readLinesFromContentEl(el));
+    },
+    [onUpdate]
+  );
+
+  const handleCopy = useCallback(
+    (e: React.ClipboardEvent) => {
+      const el = contentRef.current;
+      if (!el) return;
+      const lines = readLinesFromContentEl(el);
+      e.clipboardData.setData(BLOB_CLIPBOARD_MIME, linesToClipboardData(lines));
+      e.clipboardData.setData("text/plain", linesToPlainTextWithBullets(lines));
+      e.clipboardData.setData("text/html", linesToHtml(lines));
+    },
+    []
+  );
+
+  useLayoutEffect(() => {
     const el = contentRef.current;
-    if (!el || el.innerText) return;
-    el.innerText = blob.content || BULLET;
+    if (!el) return;
+    const lines = normalizeBlob(blob).lines ?? [{ text: "", style: "bullet" }];
+    buildContentFromLines(el, lines);
   }, [blob.id]);
 
   const SCREEN_HANDLE_WIDTH = 24;
   const SCREEN_GAP = 8;
+  const CONTROLS_COLUMN_WIDTH = 28;
   const invScale = 1 / scale;
 
-  return (
+  const portal = useControlsPortal();
+
+  const blobMenuItems = (
+    <>
+      <button
+        type="button"
+        className={styles.blobMenuItem}
+        role="menuitem"
+        data-testid="blob-menu-duplicate"
+        onClick={() => {
+          onDuplicate();
+          setMenuOpen(false);
+        }}
+      >
+        Duplicate
+      </button>
+      {blob.locked ? (
+        <button
+          type="button"
+          className={styles.blobMenuItem}
+          role="menuitem"
+          data-testid="blob-menu-unlock"
+          onClick={() => {
+            onUnlock();
+            setMenuOpen(false);
+          }}
+        >
+          Unlock
+        </button>
+      ) : (
+        <button
+          type="button"
+          className={styles.blobMenuItem}
+          role="menuitem"
+          data-testid="blob-menu-lock"
+          onClick={() => {
+            onLock();
+            setMenuOpen(false);
+          }}
+        >
+          Lock
+        </button>
+      )}
+      {onHide && (
+        <button
+          type="button"
+          className={styles.blobMenuItem}
+          role="menuitem"
+          data-testid="blob-menu-hide"
+          onClick={() => {
+            onHide();
+            setMenuOpen(false);
+          }}
+        >
+          Hide
+        </button>
+      )}
+      <button
+        type="button"
+        className={`${styles.blobMenuItem} ${styles.blobMenuItemDanger}`}
+        role="menuitem"
+        data-testid="blob-menu-delete"
+        onClick={() => {
+          onDelete();
+          setMenuOpen(false);
+        }}
+      >
+        Delete
+      </button>
+    </>
+  );
+
+  const controlsFragment = (
     <div
-      ref={cardRef}
-      data-blob-card
-      data-blob-id={blob.id}
       className={styles.wrapper}
+      data-blob-controls
+      data-dragging={isDragging ? "" : undefined}
+      data-hovered={isHovered ? "" : undefined}
       style={{ left: blob.x, top: blob.y }}
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}
       onPointerUp={handlePointerUp}
       onPointerLeave={handlePointerUp}
+      onMouseEnter={handleMouseEnter}
+      onMouseLeave={handleMouseLeave}
     >
-      {/* Drag handle: absolutely positioned to the left, always a constant screen-pixel gap from the card */}
       <div
-        className={styles.controlWrap}
+        className={styles.controlsColumn}
         style={{
-          left: -(SCREEN_GAP + SCREEN_HANDLE_WIDTH) / scale,
+          left: -(SCREEN_GAP + CONTROLS_COLUMN_WIDTH) / scale,
           transform: `scale(${invScale})`,
           transformOrigin: "100% 0",
-          width: SCREEN_HANDLE_WIDTH,
-          height: SCREEN_HANDLE_WIDTH,
         }}
       >
-        <div
-          data-drag-handle
-          className={styles.dragHandle}
-          aria-hidden
-        >
-          ⋮⋮
+        <div className={styles.controlsColumnHitArea} aria-hidden />
+        <div className={styles.controlWrap}>
+          <div
+            data-drag-handle
+            className={styles.dragHandle}
+            aria-hidden
+            onMouseEnter={handleMouseEnter}
+            onMouseLeave={handleMouseLeave}
+          >
+            ⋮⋮
+          </div>
         </div>
-      </div>
-      <div className={styles.card} data-blob-card-inner data-selected={isSelected || undefined} data-locked={blob.locked || undefined}>
-        <div
-          ref={contentRef}
-          className={styles.content}
-          contentEditable
-          suppressContentEditableWarning
-          onInput={handleInput}
-          onKeyDown={handleKeyDown}
-          onFocus={handleFocus}
-          onBlur={handleBlur}
-        />
-        <div
-          className={styles.menuWrap}
-          ref={menuRef}
-          style={{
-            transform: `scale(${invScale})`,
-            transformOrigin: "100% 0",
-          }}
-        >
+        <div className={styles.menuWrap} ref={menuRef}>
         <button
+          ref={menuButtonRef}
           type="button"
           className={styles.menuButton}
+          data-testid="blob-options"
           onClick={(e) => {
             e.preventDefault();
             e.stopPropagation();
@@ -297,59 +690,161 @@ export function BlobCard({
         >
           …
         </button>
-        {menuOpen && (
+        {menuOpen && !(popupPortal?.portalReady && popupPortal.portalRef.current) && (
           <div className={styles.blobMenu} role="menu">
-            <button
-              type="button"
-              className={styles.blobMenuItem}
-              role="menuitem"
-              onClick={() => {
-                onDuplicate();
-                setMenuOpen(false);
-              }}
-            >
-              Duplicate
-            </button>
-            {blob.locked ? (
-              <button
-                type="button"
-                className={styles.blobMenuItem}
-                role="menuitem"
-                onClick={() => {
-                  onUnlock();
-                  setMenuOpen(false);
-                }}
-              >
-                Unlock
-              </button>
-            ) : (
-              <button
-                type="button"
-                className={styles.blobMenuItem}
-                role="menuitem"
-                onClick={() => {
-                  onLock();
-                  setMenuOpen(false);
-                }}
-              >
-                Lock
-              </button>
-            )}
-            <button
-              type="button"
-              className={`${styles.blobMenuItem} ${styles.blobMenuItemDanger}`}
-              role="menuitem"
-              onClick={() => {
-                onDelete();
-                setMenuOpen(false);
-              }}
-            >
-              Delete
-            </button>
+            {blobMenuItems}
           </div>
         )}
         </div>
       </div>
     </div>
+  );
+
+  const cardBody = (
+    <div
+      ref={cardRef}
+      data-blob-card
+      data-blob-id={blob.id}
+      data-testid="blob-card"
+      className={styles.cardBodyWrapper}
+      style={{ left: blob.x, top: blob.y }}
+      onMouseEnter={handleMouseEnter}
+      onMouseLeave={handleMouseLeave}
+    >
+      <div
+        className={styles.card}
+        data-blob-card-inner
+        data-selected={isSelected || undefined}
+        data-locked={blob.locked || undefined}
+      >
+        <div
+          ref={contentRef}
+          className={styles.content}
+          contentEditable
+          suppressContentEditableWarning
+          data-testid="blob-content"
+          onInput={handleInput}
+          onKeyDown={handleKeyDown}
+          onFocus={handleFocus}
+          onBlur={handleBlur}
+          onPaste={handlePaste}
+          onCopy={handleCopy}
+        />
+      </div>
+    </div>
+  );
+
+  const portaledDropdown =
+    menuOpen &&
+    dropdownPosition &&
+    popupPortal?.portalReady &&
+    popupPortal.portalRef.current &&
+    createPortal(
+      <div
+        ref={portaledMenuRef}
+        className={styles.blobMenu}
+        role="menu"
+        style={{
+          position: "fixed",
+          top: dropdownPosition.top,
+          left: dropdownPosition.left,
+          width: "max-content",
+          transform: "translateX(-100%)",
+        }}
+      >
+        {blobMenuItems}
+      </div>,
+      popupPortal.portalRef.current
+    );
+
+  if (portal?.portalReady && portal.portalRef.current) {
+    return (
+      <>
+        {cardBody}
+        {createPortal(controlsFragment, portal.portalRef.current)}
+        {portaledDropdown}
+      </>
+    );
+  }
+
+  return (
+    <>
+      <div
+        ref={cardRef}
+        data-blob-card
+        data-blob-id={blob.id}
+        data-testid="blob-card"
+        data-dragging={isDragging ? "" : undefined}
+        data-hovered={isHovered ? "" : undefined}
+        className={styles.wrapper}
+        style={{ left: blob.x, top: blob.y }}
+        onPointerDown={handlePointerDown}
+        onPointerMove={handlePointerMove}
+        onPointerUp={handlePointerUp}
+        onPointerLeave={handlePointerUp}
+        onMouseEnter={handleMouseEnter}
+        onMouseLeave={handleMouseLeave}
+      >
+        <div
+          className={styles.controlsColumn}
+          style={{
+            left: -(SCREEN_GAP + CONTROLS_COLUMN_WIDTH) / scale,
+            transform: `scale(${invScale})`,
+            transformOrigin: "100% 0",
+          }}
+        >
+          <div className={styles.controlsColumnHitArea} aria-hidden />
+          <div className={styles.controlWrap}>
+            <div data-drag-handle className={styles.dragHandle} aria-hidden>
+              ⋮⋮
+            </div>
+          </div>
+          <div className={styles.menuWrap} ref={menuRef}>
+            <button
+              ref={menuButtonRef}
+              type="button"
+              className={styles.menuButton}
+              data-testid="blob-options"
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                setMenuOpen((o) => !o);
+              }}
+              aria-label="Blob options"
+              aria-expanded={menuOpen}
+              aria-haspopup="menu"
+            >
+              …
+            </button>
+            {menuOpen && !(popupPortal?.portalReady && popupPortal.portalRef.current) && (
+              <div className={styles.blobMenu} role="menu">
+                {blobMenuItems}
+              </div>
+            )}
+          </div>
+        </div>
+        <div
+          className={styles.card}
+          data-blob-card-inner
+          data-selected={isSelected || undefined}
+          data-locked={blob.locked || undefined}
+        >
+          <div
+            ref={contentRef}
+            className={styles.content}
+            contentEditable
+            suppressContentEditableWarning
+            data-testid="blob-content"
+            onInput={handleInput}
+            onKeyDown={handleKeyDown}
+            onFocus={handleFocus}
+            onBlur={handleBlur}
+            onPaste={handlePaste}
+            onCopy={handleCopy}
+          />
+        </div>
+      </div>
+      {portaledDropdown}
+    </>
   );
 }

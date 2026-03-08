@@ -67,6 +67,7 @@ export function SelectionOverlay({
         <button
           type="button"
           className={styles.menuButton}
+          data-testid="selection-options"
           onClick={(e) => {
             e.preventDefault();
             e.stopPropagation();
@@ -84,6 +85,7 @@ export function SelectionOverlay({
               type="button"
               className={styles.selectionMenuItem}
               role="menuitem"
+              data-testid="selection-menu-delete"
               onClick={() => {
                 onDelete();
                 setMenuOpen(false);
@@ -95,6 +97,7 @@ export function SelectionOverlay({
               type="button"
               className={styles.selectionMenuItem}
               role="menuitem"
+              data-testid="selection-menu-lock"
               onClick={() => {
                 onLock();
                 setMenuOpen(false);
@@ -106,6 +109,7 @@ export function SelectionOverlay({
               type="button"
               className={styles.selectionMenuItem}
               role="menuitem"
+              data-testid="selection-menu-duplicate"
               onClick={() => {
                 onDuplicate();
                 setMenuOpen(false);
@@ -117,6 +121,7 @@ export function SelectionOverlay({
               type="button"
               className={styles.selectionMenuItem}
               role="menuitem"
+              data-testid="selection-menu-hide"
               onClick={() => {
                 onHide();
                 setMenuOpen(false);

@@ -12,19 +12,25 @@ export function Header({
   onUnhideAll,
   hasLockedBlobs,
   onUnlockAll,
+  canShowAll = true,
 }: {
   hasHiddenBlobs?: boolean;
   onUnhideAll?: () => void;
   hasLockedBlobs?: boolean;
   onUnlockAll?: () => void;
+  canShowAll?: boolean;
 }) {
-  const { preferences, setPreferences, userId, anyMenuOpenRef, undo, redo, canUndo, canRedo } = useBlobsContext();
+  const { preferences, setPreferences, userId, incrementMenuOpen, decrementMenuOpen, undo, redo, canUndo, canRedo } = useBlobsContext();
   const [menuOpen, setMenuOpen] = useState(false);
   const [accountOpen, setAccountOpen] = useState(false);
+  const prevAnyOpenRef = useRef(false);
 
   useEffect(() => {
-    anyMenuOpenRef.current = menuOpen || accountOpen;
-  }, [menuOpen, accountOpen, anyMenuOpenRef]);
+    const open = menuOpen || accountOpen;
+    if (open && !prevAnyOpenRef.current) incrementMenuOpen();
+    if (!open && prevAnyOpenRef.current) decrementMenuOpen();
+    prevAnyOpenRef.current = open;
+  }, [menuOpen, accountOpen, incrementMenuOpen, decrementMenuOpen]);
 
   useEffect(() => {
     return () => {
@@ -211,6 +217,7 @@ export function Header({
         <button
           type="button"
           className={styles.mainMenu}
+          data-testid="main-menu"
           onClick={() => setMenuOpen((o) => !o)}
           aria-label="Open Main menu"
           aria-expanded={menuOpen}
@@ -279,6 +286,7 @@ export function Header({
                   role="tab"
                   aria-selected={preferences.theme === "light"}
                   className={styles.themeTab}
+                  data-testid="theme-light"
                   onClick={() => setTheme("light")}
                 >
                   Light
@@ -288,6 +296,7 @@ export function Header({
                   role="tab"
                   aria-selected={preferences.theme === "dark"}
                   className={styles.themeTab}
+                  data-testid="theme-dark"
                   onClick={() => setTheme("dark")}
                 >
                   Dark
@@ -295,11 +304,66 @@ export function Header({
               </div>
             </div>
             <div className={styles.menuSection}>
+              <span className={styles.menuLabel}>Blobby backer</span>
+              <div className={styles.backerSliderWrap}>
+                <input
+                  type="range"
+                  min={100}
+                  max={500}
+                  value={preferences.blobbyBackerSizePx}
+                  onChange={(e) => {
+                    const v = Math.min(500, Math.max(100, Number(e.target.value)));
+                    setPreferences((p) => ({ ...p, blobbyBackerSizePx: v }));
+                  }}
+                  className={styles.backerSlider}
+                  aria-label="Blobby backer size"
+                />
+                <span className={styles.backerSliderValue} aria-hidden>{preferences.blobbyBackerSizePx}</span>
+              </div>
+            </div>
+            <div className={styles.menuSection}>
+              <span className={styles.menuLabel}>Blobby</span>
+              <div className={styles.themeTabs} role="tablist" aria-label="Blobby commenting">
+                <div
+                  className={styles.themeTabSelector}
+                  style={{
+                    transform:
+                      preferences.blobbyCommenting === "commenting"
+                        ? "translateX(100%)"
+                        : "translateX(0)",
+                  }}
+                  aria-hidden
+                />
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={preferences.blobbyCommenting === "silent"}
+                  className={styles.themeTab}
+                  onClick={() => setPreferences((p) => ({ ...p, blobbyCommenting: "silent" }))}
+                >
+                  Silent
+                </button>
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={preferences.blobbyCommenting === "commenting"}
+                  className={styles.themeTab}
+                  onClick={() => setPreferences((p) => ({ ...p, blobbyCommenting: "commenting" }))}
+                >
+                  Comments
+                </button>
+              </div>
+            </div>
+            <div className={styles.menuSection}>
               <button
                 type="button"
                 className={styles.menuAction}
+                data-testid="unhide-all"
                 disabled={!hasHiddenBlobs}
-                onClick={() => onUnhideAll?.()}
+                onClick={() => {
+                  onUnhideAll?.();
+                  setMenuOpen(false);
+                }}
               >
                 Unhide all
               </button>
@@ -308,6 +372,7 @@ export function Header({
               <button
                 type="button"
                 className={styles.menuAction}
+                data-testid="unlock-all"
                 disabled={!hasLockedBlobs}
                 onClick={() => {
                   onUnlockAll?.();
@@ -321,6 +386,8 @@ export function Header({
               <button
                 type="button"
                 className={styles.menuAction}
+                data-testid="show-all"
+                disabled={!canShowAll}
                 onClick={() => {
                   setMenuOpen(false);
                   window.dispatchEvent(new CustomEvent("blob:show-all"));
@@ -377,6 +444,7 @@ export function Header({
         <button
           type="button"
           className={styles.accountBubble}
+          data-testid="account-button"
           onClick={() => setAccountOpen((o) => !o)}
           aria-label="Account"
           aria-expanded={accountOpen}
@@ -411,7 +479,7 @@ export function Header({
                 {signInError && (
                   <p className={styles.accountError}>{signInError}</p>
                 )}
-                <button type="button" className={styles.accountItem} onClick={signIn}>
+                <button type="button" className={styles.accountItem} data-testid="account-login" onClick={signIn}>
                   Login
                 </button>
                 <button type="button" className={styles.accountItem} onClick={signIn}>

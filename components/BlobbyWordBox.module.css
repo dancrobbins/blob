@@ -1,0 +1,9 @@
+.box {
+  opacity: 1;
+  transition: opacity 0s;
+}
+
+.box.fadeOut {
+  opacity: 0;
+  transition: opacity 1s ease-out;
+}

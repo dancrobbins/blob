@@ -1,0 +1,21 @@
+---
+description: Command "guideMe" + topic — step-by-step guidance, one step at a time, in plain English
+alwaysApply: true
+---
+
+# guideMe command
+
+When the user says **guideMe** followed by a topic (e.g. "guideMe set up Supabase" or "guideMe deploy to Vercel"), treat it as:
+
+**"Guide me, step by step, one step at a time, in plain English, how to do** &lt;topic&gt;**."**
+
+## How to respond
+
+- Give **exactly one step** per reply. Do not give multiple steps in the same message.
+- Use **plain English**: simple language, avoid unexplained jargon or acronyms.
+- Wait for the user to reply (e.g. "Done", "Next", or "Ready") before giving the next step.
+- End each step with a short prompt, e.g. "Reply **Done** when that's set." or "Reply **Next** when you're ready for the next step."
+
+## Exception
+
+- If the user explicitly asks for "all the steps" or "the full list," you may provide the complete sequence in one message, still in plain English and in order.

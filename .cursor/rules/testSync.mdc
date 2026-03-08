@@ -1,0 +1,19 @@
+---
+description: Command "testSync" — run two-tab Google sync E2E test in Cursor Browser only (no new window)
+alwaysApply: true
+---
+
+# testSync command
+
+When the user says **testSync**, do the following:
+
+1. **Ensure the Cursor Browser is open** (or Chrome with remote debugging on port 9222). The test connects to it via CDP and uses only **tabs** in that browser — it never opens a new browser window. The test will **open any necessary tabs** at the correct URL (`http://localhost:3000?e2eSync=1`) if they’re not already open.
+2. Run **`npm run testSync`**.
+3. The script will:
+   - Kill existing dev servers on ports 3000–3003, build the app, start a fresh dev server on port 3000.
+   - Wait ~6 s for the server to be ready.
+   - Run Playwright two-tab sync tests by **connecting to the existing browser** at `http://127.0.0.1:9222` (or `PLAYWRIGHT_CDP_URL`). The test ensures two tabs exist at the app URL, opening or navigating them as needed. No new window is launched.
+   - Print a plain-English summary and any recommended fixes at the end.
+4. Report the outcome to the user in plain English: whether the test passed or failed, and any suggested fixes from the script output.
+
+**Note:** The test opens two **tabs** in the Cursor Browser with `?e2eSync=1`. If the user is running manually (no CI auth state), they must log in to Google in **both** tabs; the overlay toast disappears when both are logged in and the test then continues. If the run fails with a connection error, remind the user to open the Cursor Browser (or Chrome with `--remote-debugging-port=9222`) before running testSync.

@@ -4,7 +4,15 @@
   --muted: #666;
   /* Background band height: 24px below blobby + 100px blobby + 24px above = 148px */
   --bg-band-height: 148px;
-  --blobby-back-circle-bg: rgba(0, 0, 0, 0.06);
+  /* Light mode: no blobby back circle */
+  --blobby-back-circle-bg: transparent;
+  --word-box-bg: #fff;
+  --word-box-fg: #111;
+  /* E2E test-mode overlay (?e2eSync=1) */
+  --e2e-toast-bg: #1a1a1a;
+  --e2e-toast-fg: #fff;
+  --e2e-btn-cancel-bg: #c00;
+  --e2e-btn-rerun-bg: #0a0;
 }
 
 [data-theme="dark"] {
@@ -12,6 +20,10 @@
   --bg: #121212;
   --muted: #999;
   --blobby-back-circle-bg: rgba(255, 255, 255, 0.08);
+  --word-box-bg: #1e1e1e;
+  --word-box-fg: #eee;
+  --e2e-toast-bg: #2a2a2a;
+  --e2e-toast-fg: #eee;
 }
 
 *,

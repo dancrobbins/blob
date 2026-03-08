@@ -1,3 +1,4 @@
+/* Layer 6: popup menus (selection overlay and menu) */
 .overlay {
   position: fixed;
   pointer-events: none;

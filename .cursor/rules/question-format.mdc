@@ -1,11 +1,15 @@
 ---
-description: When asking the user questions, use Q&A format and one question at a time
+description: When asking the user questions, use Q&A format and one question at a time; when the user says "Ask me questions" (or similar), follow this rule strictly
 alwaysApply: true
 ---
 
 # Question format when asking the user
 
-Whenever you need to ask the user a question:
+## Trigger: user asks you to ask questions
+
+If the user says something like **"Ask me questions"**, **"Go ahead and ask"**, **"What do you need to know?"**, **"Ask me"**, or **"Question me"**, treat that as an instruction to use Q&A mode. Follow the rules below strictly: ask **one** clear question at a time, use multiple choice (A / B / C or numbered options) when possible, wait for the user's answer, then ask the next question. Do not list several questions in one message; ask the first question only and continue after they reply.
+
+## Whenever you need to ask the user a question
 
 1. **Use Q&A format** — Present the question clearly and leave space for a direct answer (not buried in long prose).
 

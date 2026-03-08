@@ -54,7 +54,7 @@ function AuthCallbackInner() {
         }
       }
 
-      const code = searchParams.get("code") ?? getCodeFromUrl();
+      const code = searchParams?.get("code") ?? getCodeFromUrl();
       if (!code) {
         window.location.replace("/");
         return;

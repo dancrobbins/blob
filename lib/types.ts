@@ -1,8 +1,23 @@
+/** Line-level style; extensible for indent, todo, strikeout later. */
+export type BlobLineStyle = "bullet" | "indent" | "todo" | "strikeout";
+
+export interface BlobLine {
+  text: string;
+  style?: BlobLineStyle;
+  /** Used when style is "todo" (checkbox). */
+  checked?: boolean;
+  /** Indent level (0 = top level). Omitted or 0 = no indent. */
+  indent?: number;
+}
+
 export interface Blob {
   id: string;
   x: number;
   y: number;
-  content: string;
+  /** @deprecated Use lines instead. Parsed on load when lines is missing. */
+  content?: string;
+  /** Structured lines (text + style). When present, this is the source of truth. */
+  lines?: BlobLine[];
   createdAt: string;
   updatedAt: string;
   locked?: boolean;
@@ -12,11 +27,17 @@ export interface Blob {
 export interface Preferences {
   theme: "light" | "dark";
   blobbyColor: string;
+  /** Blobby backer display size in px (100–500). */
+  blobbyBackerSizePx: number;
+  /** Whether Blobby talks proactively: "silent" | "commenting". */
+  blobbyCommenting: "silent" | "commenting";
 }
 
 export const DEFAULT_PREFERENCES: Preferences = {
   theme: "light",
   blobbyColor: "pink",
+  blobbyBackerSizePx: 200,
+  blobbyCommenting: "silent",
 };
 
 export const BLOBBY_GRID_ROWS = 3;
