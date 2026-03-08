@@ -1,44 +1,40 @@
 "use client";
 
-import React, { useEffect, useState, useCallback } from "react";
-import { useBlobsContext } from "@/contexts/BlobsContext";
-import { BLOBBY_GRID_ROWS, BLOBBY_GRID_COLS } from "@/lib/types";
+import React, { useEffect, useRef, useCallback, useState } from "react";
 
-const IDLE_CHANGE_MS = 12000;
+/** Video filenames in assets/animations (and public/assets/animations). Add new files here. */
+const BLOBBY_ANIMATION_FILES = [
+  "idle LIGHT 01.mp4",
+  "idle LIGHT 02.mp4",
+  "idle LIGHT 03.mp4",
+  "lean right LIGHT 01.mp4",
+  "lean right LIGHT 02.mp4",
+];
+
+const SIZE = 100; // blobby video size
+const BACK_CIRCLE_SIZE = Math.round(SIZE * 1.1); // 10% bigger, centered under blobby
+
+function pickRandomVideo() {
+  return BLOBBY_ANIMATION_FILES[Math.floor(Math.random() * BLOBBY_ANIMATION_FILES.length)];
+}
+
+function videoSrc(filename: string) {
+  return `/assets/animations/${encodeURIComponent(filename)}`;
+}
 
 export function Blobby() {
-  const { preferences } = useBlobsContext();
-  const color = preferences.blobbyColor;
-  const [expressionIndex, setExpressionIndex] = useState(0);
-  const totalCells = BLOBBY_GRID_ROWS * BLOBBY_GRID_COLS; // 9
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const [currentFile, setCurrentFile] = useState<string>(() => pickRandomVideo());
 
-  const pickRandomExpression = useCallback(() => {
-    setExpressionIndex((i) => (i + Math.floor(Math.random() * (totalCells - 1)) + 1) % totalCells);
-  }, [totalCells]);
+  const playNextRandom = useCallback(() => {
+    const next = pickRandomVideo();
+    setCurrentFile(next);
+    // Video element will get new src and play via key/effect
+  }, []);
 
-  // Idle: change expression periodically
-  useEffect(() => {
-    const t = setInterval(pickRandomExpression, IDLE_CHANGE_MS);
-    return () => clearInterval(t);
-  }, [pickRandomExpression]);
-
-  // Expose a function so parent can trigger on user action (we'll use a custom event)
-  useEffect(() => {
-    const onAction = () => {
-      pickRandomExpression();
-    };
-    window.addEventListener("blob:user-action", onAction);
-    return () => window.removeEventListener("blob:user-action", onAction);
-  }, [pickRandomExpression]);
-
-  const row = Math.floor(expressionIndex / BLOBBY_GRID_COLS);
-  const col = expressionIndex % BLOBBY_GRID_COLS;
-
-  const imageUrl = `/assets/character%20expressions/${encodeURIComponent(color)}.png`;
-  const size = 100; // display size of one cell in the sprite (one character graphic, no crop)
-  // For background-size 300% 300%, CSS background-position % uses (container - image) * p;
-  // to show cell (col, row) we need position (col*50, row*50)% so each cell is exactly one frame.
-  const positionPct = 50; // 0%, 50%, 100% for the 3 columns/rows
+  const handleCanPlay = useCallback(() => {
+    videoRef.current?.play().catch(() => {});
+  }, []);
 
   return (
     <div
@@ -48,15 +44,45 @@ export function Blobby() {
         bottom: 24,
         left: "50%",
         transform: "translateX(-50%)",
-        width: size,
-        height: size,
-        backgroundImage: `url(${imageUrl})`,
-        backgroundSize: `${BLOBBY_GRID_COLS * 100}% ${BLOBBY_GRID_ROWS * 100}%`,
-        backgroundPosition: `${col * positionPct}% ${row * positionPct}%`,
-        imageRendering: "crisp-edges",
+        width: BACK_CIRCLE_SIZE,
+        height: BACK_CIRCLE_SIZE,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
         pointerEvents: "none",
+        overflow: "visible",
+        zIndex: 2,
       }}
       aria-hidden
-    />
+    >
+      {/* Back circle: 10% bigger than blobby, centered behind */}
+      <div
+        style={{
+          position: "absolute",
+          width: BACK_CIRCLE_SIZE,
+          height: BACK_CIRCLE_SIZE,
+          borderRadius: "50%",
+          backgroundColor: "var(--blobby-back-circle-bg, rgba(0, 0, 0, 0.06))",
+          zIndex: 0,
+        }}
+      />
+      <video
+        key={currentFile}
+        ref={videoRef}
+        src={videoSrc(currentFile)}
+        muted
+        playsInline
+        autoPlay
+        onCanPlay={handleCanPlay}
+        onEnded={playNextRandom}
+        style={{
+          position: "relative",
+          zIndex: 1,
+          width: SIZE,
+          height: SIZE,
+          objectFit: "contain",
+        }}
+      />
+    </div>
   );
 }

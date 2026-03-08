@@ -119,6 +119,28 @@
   background: var(--hover-bg, rgba(0, 0, 0, 0.06));
 }
 
+.menuActionRow {
+  display: flex;
+  gap: 8px;
+  width: 100%;
+}
+
+.menuActionRow .menuAction {
+  flex: 1;
+}
+
+.menuActionWithIcon {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.menuActionIcon {
+  width: 1em;
+  height: 1em;
+  flex-shrink: 0;
+}
+
 [data-theme="dark"] .menuAction:not(:disabled):hover {
   --hover-bg: rgba(255, 255, 255, 0.08);
 }

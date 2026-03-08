@@ -1,5 +1,27 @@
 # Changelog
 
+## 2026-03-08
+- Replaced solid circle behind Blobby with assets/graphics/blobby backer 01.svg; sync script now copies graphics to public.
+- Smallest filled circle around Blobby in bottom-band color (#FDFDFD), behind Blobby and in front of blobs.
+- Undo/redo keyboard shortcuts: Ctrl+Z and Ctrl+Shift+Z (Windows/Linux), Cmd+Z and Cmd+Shift+Z (Mac); Ctrl+Y redo on Windows.
+- Typing undo is by word: one undo step per word (space/punctuation/Enter) or per Ctrl+Backspace word delete, not per character.
+- Bottom band in light and dark mode is now #FDFDFD.
+- Dark mode background: bottom band is white (same as light); gradient above goes from white to deep dark blue.
+- Fixed dark mode background: bottom band is now black and gradient goes from black to deep dark blue (no longer white band).
+- App background is now a gradient (light blue-gray to white in light mode; dark blue-gray to black in dark mode) with a solid band behind Blobby at the bottom.
+- Undo and Redo moved to the top of the main menu with curved-arrow icons.
+- Full undo and redo for blob state (add, delete, move, edit, lock, hide, etc.); one undo step per drag.
+- Undo and Redo buttons added to the main menu; disabled when there is nothing to undo or redo.
+- Locked blobs now have no drop shadow instead of a lock icon or opacity change.
+
+## 2026-03-08
+- App error boundary: TypeScript or runtime errors now show a 'Something went wrong' screen with Reload instead of a blank page.
+- Connectivity guard: if the server is unreachable, an orange banner tells you to start the dev server and reload.
+- Blobby and main menu Blobby preview no longer show broken image icons when assets fail to load; they show a fallback or 'Preview unavailable'.
+- Added Lock and Unlock to the '...' menu on every blob.
+- Added 'Unlock all' to the main menu (disabled when no blobs are locked).
+- Locked blobs show a lock icon and subtle visual cue; Delete moved to bottom of blob menu with red text.
+
 ## 2026-03-07 (latest)
 - Fixed broken app caused by stale dev server: runapp now always kills and restarts the dev server after every build.
 - Added port guards for 3000, 3001, 3002, 3003 in runapp.js to prevent asset hash mismatches.
@@ -21,3 +43,4 @@
 - Red "TypeScript errors" button is preserved when a later fetch fails; previous errors stay visible until a successful check clears them.
 - Sign-in no longer sends deployed users to localhost: OAuth redirect URL is rewritten to the current site when Supabase returns localhost.
 - Supabase dashboard: add https://blobapp.vercel.app and https://blobapp.vercel.app/auth/callback to Redirect URLs so post-login redirect stays on production.
+pp.vercel.app and https://blobapp.vercel.app/auth/callback to Redirect URLs so post-login redirect stays on production.

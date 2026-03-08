@@ -13,6 +13,7 @@
     "sync-blobby-assets": "node scripts/sync-blobby-assets.js",
     "runapp": "node scripts/runapp.js",
     "runall": "node scripts/runapp.js",
+    "reloadapp": "node scripts/runapp.js",
     "restartall": "node scripts/restartall.js",
     "pushme": "node scripts/pushme.js",
     "pushall": "node scripts/pushme.js"

@@ -1,11 +1,11 @@
 ---
-description: Commands "runapp", "runall" (alias), "restartall" — rebuild/restart dev server and open app in Cursor Browser
+description: Commands "runapp", "runall", "reloadapp" (aliases), "restartall" — rebuild/restart dev server and open app in Cursor Browser
 alwaysApply: true
 ---
 
 # runapp and restartall commands
 
-When the user says **runapp**, **runall**, or **restartall**, do the following. **runall** is an alias for **runapp**. The same rebuild-and-refresh procedure (run runapp script, then browser_tabs, then browser_navigate to refresh) is **mandatory after every feature and bug fix** — see the rule "post-feature-rebuild-and-refresh".
+When the user says **runapp**, **runall**, **reloadapp**, or **restartall**, do the following. **runall** and **reloadapp** are aliases for **runapp**. The same rebuild-and-refresh procedure (run runapp script, then browser_tabs, then browser_navigate to refresh) is **mandatory after every feature and bug fix** — see the rule "post-feature-rebuild-and-refresh".
 
 ## Canonical port
 
@@ -25,7 +25,7 @@ The script:
 
 **Do not reuse or navigate to port 3001, 3002, or 3003.**
 
-1. Run `npm run runapp` or `npm run runall`.
+1. Run `npm run runapp`, `npm run runall`, or `npm run reloadapp`.
 2. Wait 4–6 s for the new dev server to be ready (it always starts fresh).
 3. **Always refresh to port 3000:** Call `browser_tabs` with `action: "list"`. Call `browser_navigate` with `http://localhost:3000?_=<timestamp>`. This ensures the browser loads from the canonical port with the latest build.
 
@@ -41,5 +41,5 @@ Same behavior as runapp — use either command interchangeably.
 
 | Command     | Script does                          | Agent then                    |
 |------------|---------------------------------------|-------------------------------|
-| **runapp** / **runall** | Kill all dev servers on 300x, build, start fresh on 3000 | Wait 4-6s, navigate browser to `http://localhost:3000?_=<ts>` |
+| **runapp** / **runall** / **reloadapp** | Kill all dev servers on 300x, build, start fresh on 3000 | Wait 4-6s, navigate browser to `http://localhost:3000?_=<ts>` |
 | **restartall** | Kill all dev servers on 300x, build, start fresh on 3000 | Wait 4-6s, navigate browser to `http://localhost:3000?_=<ts>` |

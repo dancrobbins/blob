@@ -2,12 +2,16 @@
   --fg: #111;
   --bg: #faf9f7;
   --muted: #666;
+  /* Background band height: 24px below blobby + 100px blobby + 24px above = 148px */
+  --bg-band-height: 148px;
+  --blobby-back-circle-bg: rgba(0, 0, 0, 0.06);
 }
 
 [data-theme="dark"] {
   --fg: #eee;
   --bg: #121212;
   --muted: #999;
+  --blobby-back-circle-bg: rgba(255, 255, 255, 0.08);
 }
 
 *,
@@ -23,11 +27,27 @@ html {
 body {
   margin: 0;
   font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
-  background: var(--bg);
   color: var(--fg);
   min-height: 100vh;
   min-height: 100dvh;
   overflow: hidden;
+  /* Light: band #FDFDFD at bottom, gradient to light blue-gray at top */
+  background: linear-gradient(
+    to top,
+    #FDFDFD 0%,
+    #FDFDFD var(--bg-band-height),
+    #dce6f0 100%
+  );
+}
+
+[data-theme="dark"] body {
+  /* Dark: band #FDFDFD at bottom, gradient from #FDFDFD to deep dark blue at top */
+  background: linear-gradient(
+    to top,
+    #FDFDFD 0%,
+    #FDFDFD var(--bg-band-height),
+    #0d1520 100%
+  );
 }
 
 #__next,

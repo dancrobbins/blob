@@ -1,14 +1,9 @@
 .wrapper {
   position: absolute;
-  display: flex;
-  flex-direction: row;
-  align-items: flex-start;
-  gap: 8px;
   touch-action: none;
 }
 
 .card {
-  flex: 1;
   min-width: 180px;
   max-width: 320px;
   display: flex;
@@ -40,8 +35,16 @@
     0 0 0 2px var(--selection-cue, rgba(100, 180, 255, 0.4));
 }
 
+.card[data-locked] {
+  box-shadow: none;
+}
+
+[data-theme="dark"] .card[data-locked] {
+  box-shadow: none;
+}
+
 .controlWrap {
-  flex-shrink: 0;
+  position: absolute;
   overflow: visible;
 }
 
@@ -191,6 +194,22 @@
 
 [data-theme="dark"] .blobMenuItem:hover {
   --hover-bg: rgba(255, 255, 255, 0.08);
+}
+
+.blobMenuItemDanger {
+  color: var(--danger-fg, #b91c1c);
+}
+
+[data-theme="dark"] .blobMenuItemDanger {
+  --danger-fg: #fca5a5;
+}
+
+.blobMenuItemDanger:hover {
+  background: var(--danger-hover-bg, rgba(185, 28, 28, 0.08));
+}
+
+[data-theme="dark"] .blobMenuItemDanger:hover {
+  --danger-hover-bg: rgba(252, 165, 165, 0.1);
 }
 
 [data-theme="dark"] .content {

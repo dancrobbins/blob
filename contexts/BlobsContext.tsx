@@ -19,6 +19,7 @@ import {
   fetchUserBlobs,
   getMergedFlag,
   setMergedFlag,
+  clearMergedFlag,
   mergeLocalAndCloudBlobs,
   blobsEqual,
   debouncedSaveToCloud,
@@ -31,10 +32,19 @@ import {
 import { loadPreferences, savePreferences, mergeCloudPreferences } from "@/lib/preferences-store";
 import type { Preferences } from "@/lib/types";
 import { supabase } from "@/lib/supabase";
+import { MergeDialog } from "@/components/MergeDialog";
+
+const UNDO_HISTORY_MAX = 50;
 
 type BlobsContextValue = {
   blobs: Blob[];
   dispatch: React.Dispatch<BlobsAction>;
+  undo: () => void;
+  redo: () => void;
+  canUndo: boolean;
+  canRedo: boolean;
+  /** Push current blob state to undo stack (e.g. before word-boundary typing). Clears redo. */
+  pushUndoSnapshot: () => void;
   preferences: Preferences;
   setPreferences: (p: Preferences | ((prev: Preferences) => Preferences)) => void;
   userId: string | null;
@@ -54,6 +64,19 @@ const MAJOR_ACTIONS = new Set<BlobsAction["type"]>([
 ]);
 const POSITION_ACTION = "SET_POSITION";
 
+/** Actions that push to undo when dispatched. UPDATE_BLOB is omitted; typing uses pushUndoSnapshot at word boundaries. */
+const UNDOABLE_ACTIONS = new Set<BlobsAction["type"]>([
+  "ADD_BLOB",
+  "DELETE_BLOB",
+  "DELETE_BLOBS",
+  "DUPLICATE_BLOB",
+  "DUPLICATE_BLOBS",
+  "SET_POSITION",
+  "SET_LOCKED",
+  "SET_HIDDEN",
+  "UNHIDE_ALL",
+]);
+
 export function BlobsProvider({ children }: { children: ReactNode }) {
   const [blobs, dispatchReducer] = useReducer(blobsReducer, []);
   const [preferences, setPreferencesState] = React.useState<Preferences>(() =>
@@ -65,11 +88,68 @@ export function BlobsProvider({ children }: { children: ReactNode }) {
   const lastActionRef = React.useRef<"major" | "position" | null>(null);
   const positionSaveTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const blobsRef = React.useRef<Blob[]>(blobs);
+  const syncingRef = React.useRef(false);
+  const prevUserIdRef = React.useRef<string | null>(null);
+  const [showMergeDialog, setShowMergeDialog] = React.useState(false);
+  const mergeDialogResolveRef = React.useRef<((value: boolean) => void) | null>(null);
+
+  const [undoStack, setUndoStack] = React.useState<Blob[][]>([]);
+  const [redoStack, setRedoStack] = React.useState<Blob[][]>([]);
+  const isUndoRedoRef = React.useRef(false);
+  const lastActionTypeForUndoRef = React.useRef<BlobsAction["type"] | null>(null);
 
   const dispatch = useCallback((action: BlobsAction) => {
+    if (isUndoRedoRef.current) {
+      dispatchReducer(action);
+      return;
+    }
+    if (UNDOABLE_ACTIONS.has(action.type)) {
+      const shouldPush =
+        action.type !== POSITION_ACTION ||
+        lastActionTypeForUndoRef.current !== POSITION_ACTION;
+      if (shouldPush) {
+        const snapshot = blobsRef.current.map((b) => ({ ...b }));
+        setUndoStack((s) => {
+          const next = [...s, snapshot];
+          return next.length > UNDO_HISTORY_MAX ? next.slice(-UNDO_HISTORY_MAX) : next;
+        });
+        setRedoStack([]);
+      }
+      lastActionTypeForUndoRef.current = action.type;
+    }
     if (MAJOR_ACTIONS.has(action.type)) lastActionRef.current = "major";
     else if (action.type === POSITION_ACTION) lastActionRef.current = "position";
     dispatchReducer(action);
+  }, []);
+
+  const undo = useCallback(() => {
+    if (undoStack.length === 0) return;
+    const prev = undoStack[undoStack.length - 1];
+    setUndoStack((s) => s.slice(0, -1));
+    setRedoStack((r) => [...r, blobsRef.current.map((b) => ({ ...b }))]);
+    isUndoRedoRef.current = true;
+    dispatchReducer({ type: "SET_BLOBS", payload: prev });
+    isUndoRedoRef.current = false;
+  }, [undoStack.length]);
+
+  const redo = useCallback(() => {
+    if (redoStack.length === 0) return;
+    const next = redoStack[redoStack.length - 1];
+    setRedoStack((r) => r.slice(0, -1));
+    setUndoStack((s) => [...s, blobsRef.current.map((b) => ({ ...b }))]);
+    isUndoRedoRef.current = true;
+    dispatchReducer({ type: "SET_BLOBS", payload: next });
+    isUndoRedoRef.current = false;
+  }, [redoStack.length]);
+
+  const pushUndoSnapshot = useCallback(() => {
+    if (isUndoRedoRef.current) return;
+    const snapshot = blobsRef.current.map((b) => ({ ...b }));
+    setUndoStack((s) => {
+      const next = [...s, snapshot];
+      return next.length > UNDO_HISTORY_MAX ? next.slice(-UNDO_HISTORY_MAX) : next;
+    });
+    setRedoStack([]);
   }, []);
 
   const setPreferences = useCallback(
@@ -107,52 +187,100 @@ export function BlobsProvider({ children }: { children: ReactNode }) {
     return () => subscription.unsubscribe();
   }, []);
 
-  // On login: always merge cloud + local so both origins stay in sync
+  const handleMergeDialogChoice = useCallback((pullIntoCloud: boolean) => {
+    mergeDialogResolveRef.current?.(pullIntoCloud);
+    mergeDialogResolveRef.current = null;
+    setShowMergeDialog(false);
+  }, []);
+
+  // On login: if user has local blobs, ask whether to pull into cloud or discard; then sync
   useEffect(() => {
     if (!userId || !supabase) return;
+    syncingRef.current = true;
+    clearSaveTimeout();
     const run = async () => {
-      console.log("[blob sync] user logged in, fetching cloud blobs for", userId);
-      const cloud = await fetchUserBlobs(userId);
-      const current = loadBlobsFromStorage();
-      console.log("[blob sync] cloud blobs:", cloud?.blobs?.length ?? 0, "local blobs:", current.length);
+      try {
+        console.log("[blob sync] user logged in, fetching cloud blobs for", userId);
+        const cloud = await fetchUserBlobs(userId);
+        const current = loadBlobsFromStorage();
+        console.log("[blob sync] cloud blobs:", cloud?.blobs?.length ?? 0, "local blobs:", current.length);
 
-      if (cloud?.preferences) {
-        const currentPrefs = loadPreferences();
-        const mergedPrefs = mergeCloudPreferences(currentPrefs, cloud.preferences);
-        setPreferencesState(mergedPrefs);
-        savePreferences(mergedPrefs);
-      }
+        if (cloud?.preferences) {
+          const currentPrefs = loadPreferences();
+          const mergedPrefs = mergeCloudPreferences(currentPrefs, cloud.preferences);
+          setPreferencesState(mergedPrefs);
+          savePreferences(mergedPrefs);
+        }
 
-      if (!cloud) {
-        // No cloud data yet — push local to cloud
-        console.log("[blob sync] no cloud data, pushing local to cloud");
-        const prefs = loadPreferences();
-        await upsertUserBlobs(userId, current, prefs);
-        if (!getMergedFlag(userId)) setMergedFlag(userId);
-        return;
-      }
+        let pullIntoCloud = true;
+        if (current.length > 0) {
+          setShowMergeDialog(true);
+          pullIntoCloud = await new Promise<boolean>((resolve) => {
+            mergeDialogResolveRef.current = resolve;
+          });
+        }
 
-      const mergedBlobs = mergeLocalAndCloudBlobs(current, cloud.blobs);
-      console.log("[blob sync] merged blobs:", mergedBlobs.length);
-      dispatch({ type: "SET_BLOBS", payload: mergedBlobs });
-      saveBlobsToStorage(mergedBlobs);
-      if (!getMergedFlag(userId)) {
+        if (!pullIntoCloud) {
+          // User chose to discard local: use cloud only (or empty), no cache
+          saveBlobsToStorage([]);
+          dispatch({ type: "SET_BLOBS", payload: cloud?.blobs ?? [] });
+          setMergedFlag(userId);
+          return;
+        }
+
+        if (!cloud) {
+          console.log("[blob sync] no cloud data, pushing local to cloud");
+          const prefs = loadPreferences();
+          await upsertUserBlobs(userId, current, prefs);
+          if (!getMergedFlag(userId)) setMergedFlag(userId);
+          return;
+        }
+
+        const mergedBlobs = mergeLocalAndCloudBlobs(current, cloud.blobs);
+        console.log("[blob sync] merged blobs:", mergedBlobs.length);
+        dispatch({ type: "SET_BLOBS", payload: mergedBlobs });
         setMergedFlag(userId);
         const prefs = loadPreferences();
         await upsertUserBlobs(userId, mergedBlobs, prefs);
+      } finally {
+        syncingRef.current = false;
       }
     };
     run();
   }, [userId]);
 
+  // On logout: reset scene and clear all data; no blobs on canvas or in storage
+  useEffect(() => {
+    if (userId === null && prevUserIdRef.current !== null) {
+      const loggedOutUserId = prevUserIdRef.current;
+      clearSaveTimeout();
+      if (positionSaveTimeoutRef.current) {
+        clearTimeout(positionSaveTimeoutRef.current);
+        positionSaveTimeoutRef.current = null;
+      }
+      dispatchReducer({ type: "SET_BLOBS", payload: [] });
+      setUndoStack([]);
+      setRedoStack([]);
+      saveBlobsToStorage([]);
+      clearMergedFlag(loggedOutUserId);
+    }
+    prevUserIdRef.current = userId;
+  }, [userId]);
+
   // Keep ref updated for polling
   blobsRef.current = blobs;
 
-  // Persist blobs: localStorage always; cloud when logged in (debounced + immediate on major actions)
+  // Persist: anonymous only to localStorage; logged-in users never cache in browser, only save to cloud
   useEffect(() => {
     if (isLoading) return;
-    saveBlobsToStorage(blobs);
-    if (!userId) return;
+    if (!userId) {
+      saveBlobsToStorage(blobs);
+      return;
+    }
+    if (syncingRef.current) {
+      console.log("[blob sync] persist: skipping cloud save (syncing)");
+      return;
+    }
 
     const action = lastActionRef.current;
     if (action === "major") {
@@ -186,7 +314,9 @@ export function BlobsProvider({ children }: { children: ReactNode }) {
       if (!blobsEqual(merged, current)) {
         console.log("[blob sync] poll: cloud has updates, merging", merged.length, "blobs");
         dispatchReducer({ type: "SET_BLOBS", payload: merged });
-        saveBlobsToStorage(merged);
+        // Logged-in users: do not cache in browser
+      } else {
+        console.log("[blob sync] poll: cloud fetch ok, no changes");
       }
     };
 
@@ -211,6 +341,11 @@ export function BlobsProvider({ children }: { children: ReactNode }) {
   const value: BlobsContextValue = {
     blobs,
     dispatch,
+    undo,
+    redo,
+    canUndo: undoStack.length > 0,
+    canRedo: redoStack.length > 0,
+    pushUndoSnapshot,
     preferences,
     setPreferences,
     userId,
@@ -219,7 +354,15 @@ export function BlobsProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <BlobsContext.Provider value={value}>{children}</BlobsContext.Provider>
+    <BlobsContext.Provider value={value}>
+      {children}
+      {showMergeDialog && (
+        <MergeDialog
+          onPull={() => handleMergeDialogChoice(true)}
+          onDiscard={() => handleMergeDialogChoice(false)}
+        />
+      )}
+    </BlobsContext.Provider>
   );
 }
 

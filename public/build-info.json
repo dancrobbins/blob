@@ -1,9 +1,8 @@
 {
-  "buildNumber": 39,
-  "buildTime": "2026-03-08T00:12:00.899Z",
+  "buildNumber": 60,
+  "buildTime": "2026-03-08T07:15:58.232Z",
   "version": "1.0.0",
   "updates": [
-    "Fixed broken app caused by stale dev server: runapp now always kills and restarts the dev server after every build.",
-    "Added port guards for 3000, 3001, 3002, 3003 in runapp.js to prevent asset hash mismatches."
+    "Replaced solid circle behind Blobby with assets/graphics/blobby backer 01.svg; sync script now copies graphics to public."
   ]
 }

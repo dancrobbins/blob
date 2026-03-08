@@ -73,7 +73,7 @@ function screenToWorld(
 }
 
 export default function Home() {
-  const { blobs, dispatch, anyMenuOpenRef } = useBlobsContext();
+  const { blobs, dispatch, anyMenuOpenRef, undo, redo, canUndo, canRedo } = useBlobsContext();
   const canvasRef = useRef<HTMLDivElement>(null);
   const canvasInnerRef = useRef<HTMLDivElement>(null);
   const pointerDownOnCanvas = useRef(false);
@@ -403,9 +403,50 @@ export default function Home() {
     return () => window.removeEventListener("blob:show-all", handler);
   }, [showAll]);
 
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      const isMac = typeof navigator !== "undefined" && /Mac|iPod|iPhone|iPad/.test(navigator.platform);
+      const mod = isMac ? e.metaKey : e.ctrlKey;
+      if (!mod) return;
+      if (e.key === "z" || e.key === "Z") {
+        if (e.shiftKey) {
+          if (canRedo) {
+            e.preventDefault();
+            e.stopPropagation();
+            redo();
+          }
+        } else {
+          if (canUndo) {
+            e.preventDefault();
+            e.stopPropagation();
+            undo();
+          }
+        }
+        return;
+      }
+      if (e.key === "y" && !e.shiftKey && !isMac) {
+        if (canRedo) {
+          e.preventDefault();
+          e.stopPropagation();
+          redo();
+        }
+      }
+    };
+    document.addEventListener("keydown", onKeyDown, true);
+    return () => document.removeEventListener("keydown", onKeyDown, true);
+  }, [undo, redo, canUndo, canRedo]);
+
   return (
     <main className={styles.main}>
-      <Header hasHiddenBlobs={blobs.some((b) => b.hidden)} onUnhideAll={() => dispatch({ type: "UNHIDE_ALL" })} />
+      <Header
+        hasHiddenBlobs={blobs.some((b) => b.hidden)}
+        onUnhideAll={() => dispatch({ type: "UNHIDE_ALL" })}
+        hasLockedBlobs={blobs.some((b) => b.locked)}
+        onUnlockAll={() => {
+          const lockedIds = blobs.filter((b) => b.locked).map((b) => b.id);
+          if (lockedIds.length > 0) dispatch({ type: "SET_LOCKED", payload: { ids: lockedIds, locked: false } });
+        }}
+      />
       <div
         ref={canvasRef}
         className={styles.canvas}
@@ -446,6 +487,8 @@ export default function Home() {
             onFocus={() => window.dispatchEvent(new CustomEvent("blob:user-action"))}
             onDuplicate={() => dispatch({ type: "DUPLICATE_BLOB", payload: blob.id })}
             onDelete={() => dispatch({ type: "DELETE_BLOB", payload: blob.id })}
+            onLock={() => dispatch({ type: "SET_LOCKED", payload: { ids: [blob.id], locked: true } })}
+            onUnlock={() => dispatch({ type: "SET_LOCKED", payload: { ids: [blob.id], locked: false } })}
           />
         ))}
         </div>
@@ -489,6 +532,22 @@ export default function Home() {
         </div>
       )}
 
+      {/* Blobby backer graphic; behind Blobby, in front of blobs */}
+      <img
+        src="/assets/graphics/blobby%20backer%2001.svg"
+        alt=""
+        aria-hidden
+        style={{
+          position: "fixed",
+          left: "50%",
+          bottom: 24 + 50 - (100 * Math.SQRT2) / 2,
+          transform: "translateX(-50%)",
+          width: 100 * Math.SQRT2,
+          height: 100 * Math.SQRT2,
+          zIndex: 1,
+          pointerEvents: "none",
+        }}
+      />
       <Blobby />
 
       {pendingDeleteIds && (

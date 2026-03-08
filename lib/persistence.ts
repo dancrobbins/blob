@@ -64,6 +64,15 @@ export function setMergedFlag(userId: string): void {
   }
 }
 
+export function clearMergedFlag(userId: string): void {
+  if (typeof window === "undefined") return;
+  try {
+    localStorage.removeItem(BLOB_MERGED_PREFIX + userId);
+  } catch {
+    // ignore
+  }
+}
+
 export async function fetchUserBlobs(userId: string): Promise<{
   blobs: Blob[];
   preferences: Partial<Preferences> | null;
@@ -75,7 +84,11 @@ export async function fetchUserBlobs(userId: string): Promise<{
     .select("data, updated_at")
     .eq("user_id", userId)
     .single();
-  if (error || !data) return null;
+  if (error) {
+    console.error("[blob sync] fetchUserBlobs error:", error.message, error.code);
+    return null;
+  }
+  if (!data) return null;
   const dataObj = data.data as { notes?: Blob[]; preferences?: Partial<Preferences> } | null;
   const blobs = Array.isArray(dataObj?.notes) ? dataObj.notes : [];
   const preferences = dataObj?.preferences ?? null;
@@ -100,7 +113,11 @@ export async function upsertUserBlobs(
     },
     { onConflict: "user_id" }
   );
-  return !error;
+  if (error) {
+    console.error("[blob sync] upsertUserBlobs error:", error.message, error.code);
+    return false;
+  }
+  return true;
 }
 
 function blobsEqual(a: Blob[], b: Blob[]): boolean {
@@ -138,8 +155,9 @@ export function debouncedSaveToCloud(
   preferences: Partial<Preferences>
 ): void {
   if (saveTimeout) clearTimeout(saveTimeout);
-  saveTimeout = setTimeout(() => {
+  saveTimeout = setTimeout(async () => {
     saveTimeout = null;
-    upsertUserBlobs(userId, blobs, preferences);
+    const ok = await upsertUserBlobs(userId, blobs, preferences);
+    if (!ok) console.error("[blob sync] debouncedSaveToCloud: upsert failed");
   }, DEBOUNCE_MS);
 }

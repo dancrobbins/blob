@@ -92,6 +92,20 @@ function main() {
     copyDirRecursive(iconsDir, publicIcons);
   }
 
+  const animationsDir = path.join(ASSETS, "animations");
+  const publicAnimations = path.join(PUBLIC_ASSETS, "animations");
+  if (fs.existsSync(animationsDir)) {
+    mkdirRecursive(publicAnimations);
+    copyDirRecursive(animationsDir, publicAnimations);
+  }
+
+  const graphicsDir = path.join(ASSETS, "graphics");
+  const publicGraphics = path.join(PUBLIC_ASSETS, "graphics");
+  if (fs.existsSync(graphicsDir)) {
+    mkdirRecursive(publicGraphics);
+    copyDirRecursive(graphicsDir, publicGraphics);
+  }
+
   // Root-level pink.png if used
   const pinkSrc = path.join(ASSETS, "pink.png");
   if (fs.existsSync(pinkSrc)) {

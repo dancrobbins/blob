@@ -4,6 +4,8 @@ import { BlobsProvider } from "@/contexts/BlobsContext";
 import { ThemeApplied } from "@/components/ThemeApplied";
 import { TypeScriptErrorsDebug } from "@/components/TypeScriptErrorsDebug";
 import { AuthHashRedirect } from "@/components/AuthHashRedirect";
+import { AppErrorBoundary } from "@/components/AppErrorBoundary";
+import { ConnectivityGuard } from "@/components/ConnectivityGuard";
 
 export const metadata: Metadata = {
   title: "blob",
@@ -26,11 +28,15 @@ export default function RootLayout({
         />
       </head>
       <body>
-        <BlobsProvider>
-          <AuthHashRedirect />
-          <ThemeApplied>{children}</ThemeApplied>
-          <TypeScriptErrorsDebug />
-        </BlobsProvider>
+        <AppErrorBoundary>
+          <BlobsProvider>
+            <ConnectivityGuard>
+              <AuthHashRedirect />
+              <ThemeApplied>{children}</ThemeApplied>
+              <TypeScriptErrorsDebug />
+            </ConnectivityGuard>
+          </BlobsProvider>
+        </AppErrorBoundary>
       </body>
     </html>
   );

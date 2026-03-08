@@ -2,7 +2,16 @@
 
 import React, { useRef, useState, useCallback, useEffect } from "react";
 import type { Blob } from "@/lib/types";
+import { useBlobsContext } from "@/contexts/BlobsContext";
 import styles from "./BlobCard.module.css";
+
+/** Keys that commit one undo step (word boundary): space, punctuation, Enter, or delete-word. */
+function isWordBoundaryKey(key: string, ctrlOrMeta: boolean): boolean {
+  if (key === " " || key === "Enter") return true;
+  if (/^[.,;:!?]$/.test(key)) return true;
+  if (key === "Backspace" && ctrlOrMeta) return true;
+  return false;
+}
 
 const BULLET = "• ";
 
@@ -51,6 +60,8 @@ export function BlobCard({
   onFocus,
   onDuplicate,
   onDelete,
+  onLock,
+  onUnlock,
   scale = 1,
   isSelected = false,
 }: {
@@ -62,9 +73,12 @@ export function BlobCard({
   onFocus: () => void;
   onDuplicate: () => void;
   onDelete: () => void;
+  onLock: () => void;
+  onUnlock: () => void;
   scale?: number;
   isSelected?: boolean;
 }) {
+  const { pushUndoSnapshot } = useBlobsContext();
   const cardRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -157,6 +171,9 @@ export function BlobCard({
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLDivElement>) => {
+      if (isWordBoundaryKey(e.key, e.ctrlKey || e.metaKey)) {
+        pushUndoSnapshot();
+      }
       if (e.key === "Enter") {
         e.preventDefault();
         const el = contentRef.current;
@@ -189,7 +206,7 @@ export function BlobCard({
         onUpdate(newText);
       }
     },
-    [onUpdate]
+    [onUpdate, pushUndoSnapshot]
   );
 
   const handleFocus = useCallback(() => {
@@ -212,10 +229,9 @@ export function BlobCard({
     el.innerText = blob.content || BULLET;
   }, [blob.id]);
 
-  const DRAG_HANDLE_WIDTH = 24;
-  const GAP_PX = 8;
+  const SCREEN_HANDLE_WIDTH = 24;
+  const SCREEN_GAP = 8;
   const invScale = 1 / scale;
-  const gapWorld = GAP_PX / scale;
 
   return (
     <div
@@ -223,23 +239,21 @@ export function BlobCard({
       data-blob-card
       data-blob-id={blob.id}
       className={styles.wrapper}
-      style={{
-        left: blob.x - DRAG_HANDLE_WIDTH - gapWorld,
-        top: blob.y,
-        gap: gapWorld,
-      }}
+      style={{ left: blob.x, top: blob.y }}
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}
       onPointerUp={handlePointerUp}
       onPointerLeave={handlePointerUp}
     >
+      {/* Drag handle: absolutely positioned to the left, always a constant screen-pixel gap from the card */}
       <div
         className={styles.controlWrap}
         style={{
-          width: 24,
-          height: 24,
+          left: -(SCREEN_GAP + SCREEN_HANDLE_WIDTH) / scale,
           transform: `scale(${invScale})`,
-          transformOrigin: "0 0",
+          transformOrigin: "100% 0",
+          width: SCREEN_HANDLE_WIDTH,
+          height: SCREEN_HANDLE_WIDTH,
         }}
       >
         <div
@@ -250,7 +264,7 @@ export function BlobCard({
           ⋮⋮
         </div>
       </div>
-      <div className={styles.card} data-blob-card-inner data-selected={isSelected || undefined}>
+      <div className={styles.card} data-blob-card-inner data-selected={isSelected || undefined} data-locked={blob.locked || undefined}>
         <div
           ref={contentRef}
           className={styles.content}
@@ -296,9 +310,34 @@ export function BlobCard({
             >
               Duplicate
             </button>
+            {blob.locked ? (
+              <button
+                type="button"
+                className={styles.blobMenuItem}
+                role="menuitem"
+                onClick={() => {
+                  onUnlock();
+                  setMenuOpen(false);
+                }}
+              >
+                Unlock
+              </button>
+            ) : (
+              <button
+                type="button"
+                className={styles.blobMenuItem}
+                role="menuitem"
+                onClick={() => {
+                  onLock();
+                  setMenuOpen(false);
+                }}
+              >
+                Lock
+              </button>
+            )}
             <button
               type="button"
-              className={styles.blobMenuItem}
+              className={`${styles.blobMenuItem} ${styles.blobMenuItemDanger}`}
               role="menuitem"
               onClick={() => {
                 onDelete();

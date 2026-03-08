@@ -5,17 +5,20 @@ import { useBlobsContext } from "@/contexts/BlobsContext";
 import { APP_VERSION, BUILD_TIME, BUILD_UPDATES } from "@/lib/constants";
 import type { BuildInfo } from "@/lib/types";
 import { supabase } from "@/lib/supabase";
-import { BLOBBY_COLOR_NAMES, BLOBBY_GRID_COLS, BLOBBY_GRID_ROWS } from "@/lib/types";
 import styles from "./Header.module.css";
 
 export function Header({
   hasHiddenBlobs,
   onUnhideAll,
+  hasLockedBlobs,
+  onUnlockAll,
 }: {
   hasHiddenBlobs?: boolean;
   onUnhideAll?: () => void;
+  hasLockedBlobs?: boolean;
+  onUnlockAll?: () => void;
 }) {
-  const { preferences, setPreferences, userId, anyMenuOpenRef } = useBlobsContext();
+  const { preferences, setPreferences, userId, anyMenuOpenRef, undo, redo, canUndo, canRedo } = useBlobsContext();
   const [menuOpen, setMenuOpen] = useState(false);
   const [accountOpen, setAccountOpen] = useState(false);
 
@@ -135,11 +138,6 @@ export function Header({
     setPreferences((p) => ({ ...p, theme }));
   };
 
-  const handleBlobbyCellClick = (index: number) => {
-    const color = BLOBBY_COLOR_NAMES[index] ?? preferences.blobbyColor;
-    setPreferences((p) => ({ ...p, blobbyColor: color }));
-  };
-
   const signIn = async () => {
     setSignInError(null);
     if (!supabase) {
@@ -224,6 +222,46 @@ export function Header({
         {menuOpen && (
           <div className={styles.menu}>
             <div className={styles.menuSection}>
+              <div className={styles.menuActionRow}>
+                <button
+                  type="button"
+                  className={styles.menuAction}
+                  disabled={!canUndo}
+                  onClick={() => {
+                    undo();
+                    setMenuOpen(false);
+                  }}
+                  aria-label="Undo"
+                >
+                  <span className={styles.menuActionWithIcon}>
+                    <svg className={styles.menuActionIcon} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                      <path d="M3 10h10a5 5 0 0 1 5 5v2" />
+                      <path d="M3 10l3-3M3 10l3 3" />
+                    </svg>
+                    Undo
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  className={styles.menuAction}
+                  disabled={!canRedo}
+                  onClick={() => {
+                    redo();
+                    setMenuOpen(false);
+                  }}
+                  aria-label="Redo"
+                >
+                  <span className={styles.menuActionWithIcon}>
+                    <svg className={styles.menuActionIcon} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                      <path d="M21 10H11a5 5 0 0 0-5 5v2" />
+                      <path d="M21 10l-3-3m3 3l-3 3" />
+                    </svg>
+                    Redo
+                  </span>
+                </button>
+              </div>
+            </div>
+            <div className={styles.menuSection}>
               <span className={styles.menuLabel}>Theme</span>
               <div className={styles.themeTabs} role="tablist" aria-label="Theme">
                 <div
@@ -257,36 +295,6 @@ export function Header({
               </div>
             </div>
             <div className={styles.menuSection}>
-              <span className={styles.menuLabel}>Blobby</span>
-              <div
-                className={styles.blobbyGrid}
-                style={{
-                  width: 120,
-                  height: 120,
-                  backgroundImage: "url(/assets/character%20color%20schemes.png)",
-                  backgroundSize: "100% 100%",
-                }}
-              >
-                {Array.from({ length: BLOBBY_GRID_ROWS * BLOBBY_GRID_COLS }, (_, i) => (
-                  <button
-                    key={i}
-                    type="button"
-                    className={styles.blobbyCell}
-                    onClick={() => handleBlobbyCellClick(i)}
-                    data-selected={BLOBBY_COLOR_NAMES[i] === preferences.blobbyColor}
-                    style={{
-                      width: `${100 / BLOBBY_GRID_COLS}%`,
-                      height: `${100 / BLOBBY_GRID_ROWS}%`,
-                      left: `${(i % BLOBBY_GRID_COLS) * (100 / BLOBBY_GRID_COLS)}%`,
-                      top: `${Math.floor(i / BLOBBY_GRID_COLS) * (100 / BLOBBY_GRID_ROWS)}%`,
-                    }}
-                    aria-label={`Blobby option ${i + 1}`}
-                    aria-pressed={BLOBBY_COLOR_NAMES[i] === preferences.blobbyColor}
-                  />
-                ))}
-              </div>
-            </div>
-            <div className={styles.menuSection}>
               <button
                 type="button"
                 className={styles.menuAction}
@@ -294,6 +302,19 @@ export function Header({
                 onClick={() => onUnhideAll?.()}
               >
                 Unhide all
+              </button>
+            </div>
+            <div className={styles.menuSection}>
+              <button
+                type="button"
+                className={styles.menuAction}
+                disabled={!hasLockedBlobs}
+                onClick={() => {
+                  onUnlockAll?.();
+                  setMenuOpen(false);
+                }}
+              >
+                Unlock all
               </button>
             </div>
             <div className={styles.menuSection}>
