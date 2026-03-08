@@ -103,6 +103,12 @@ export async function upsertUserBlobs(
   return !error;
 }
 
+function blobsEqual(a: Blob[], b: Blob[]): boolean {
+  if (a.length !== b.length) return false;
+  const sortById = (arr: Blob[]) => [...arr].sort((x, y) => x.id.localeCompare(y.id));
+  return JSON.stringify(sortById(a)) === JSON.stringify(sortById(b));
+}
+
 function mergeBlobs(local: Blob[], cloud: Blob[]): Blob[] {
   const byId = new Map<string, Blob>();
   for (const b of local) byId.set(b.id, b);
@@ -123,6 +129,8 @@ export function mergeLocalAndCloudBlobs(
 ): Blob[] {
   return mergeBlobs(local, cloud);
 }
+
+export { blobsEqual };
 
 export function debouncedSaveToCloud(
   userId: string,

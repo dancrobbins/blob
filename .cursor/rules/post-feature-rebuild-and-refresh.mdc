@@ -70,16 +70,17 @@ Example — what to write after fixing a crash and adding a feature:
 ## Step 3 — Run runapp and fix failures
 
 - Run: `npm run runapp`
-- If it fails: diagnose the error, fix it, run again. Repeat until exit code 0.
-- If it printed "Dev server starting.", wait 2–3 seconds before the browser step.
+- **runapp ALWAYS kills all existing dev servers and starts a fresh one.** It kills ports 3000, 3001, 3002, 3003, then builds, then starts a new dev server on 3000. This is required to prevent asset hash mismatches between the new build and an old server. Do NOT assume the old server can be reused.
+- If runapp fails: diagnose the error, fix it, run again. Repeat until exit code 0.
+- After runapp, **always wait 4–6 seconds** before the browser step so the fresh dev server is ready.
 
 ---
 
 ## Step 4 — Refresh the app in the existing Cursor Browser
 
 - Call `browser_tabs` with `action: "list"`.
-- If any tab URL is `http://localhost:3000` or `http://localhost:3001` (with or without path): call `browser_navigate` with that URL + a cache-busting query param (e.g. `?_=1741234567`).
-- If no app tab exists: navigate to `http://localhost:3000?_=...` (or 3001 if 3000 fails). Do not tell the user to open the URL.
+- **Always navigate to `http://localhost:3000`** (the canonical port) with a cache-busting query param (e.g. `?_=1741234567`). Do not use 3001 or any other port — the runapp script ensures the dev server is on 3000.
+- If no app tab exists: navigate to `http://localhost:3000?_=...`. Do not tell the user to open the URL.
 
 ---
 

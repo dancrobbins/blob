@@ -20,6 +20,7 @@ import {
   getMergedFlag,
   setMergedFlag,
   mergeLocalAndCloudBlobs,
+  blobsEqual,
   debouncedSaveToCloud,
   upsertUserBlobs,
   clearSaveTimeout,
@@ -106,32 +107,39 @@ export function BlobsProvider({ children }: { children: ReactNode }) {
     return () => subscription.unsubscribe();
   }, []);
 
-  // First-time merge when user logs in; then use cloud as source when loaded. Apply account preferences when present.
+  // On login: always merge cloud + local so both origins stay in sync
   useEffect(() => {
     if (!userId || !supabase) return;
     const run = async () => {
-      const merged = getMergedFlag(userId);
+      console.log("[blob sync] user logged in, fetching cloud blobs for", userId);
       const cloud = await fetchUserBlobs(userId);
       const current = loadBlobsFromStorage();
+      console.log("[blob sync] cloud blobs:", cloud?.blobs?.length ?? 0, "local blobs:", current.length);
+
       if (cloud?.preferences) {
         const currentPrefs = loadPreferences();
         const mergedPrefs = mergeCloudPreferences(currentPrefs, cloud.preferences);
         setPreferencesState(mergedPrefs);
         savePreferences(mergedPrefs);
       }
-      if (!merged && cloud) {
-        const mergedBlobs = mergeLocalAndCloudBlobs(
-          current,
-          cloud.blobs
-        );
-        dispatch({ type: "SET_BLOBS", payload: mergedBlobs });
-        saveBlobsToStorage(mergedBlobs);
+
+      if (!cloud) {
+        // No cloud data yet — push local to cloud
+        console.log("[blob sync] no cloud data, pushing local to cloud");
+        const prefs = loadPreferences();
+        await upsertUserBlobs(userId, current, prefs);
+        if (!getMergedFlag(userId)) setMergedFlag(userId);
+        return;
+      }
+
+      const mergedBlobs = mergeLocalAndCloudBlobs(current, cloud.blobs);
+      console.log("[blob sync] merged blobs:", mergedBlobs.length);
+      dispatch({ type: "SET_BLOBS", payload: mergedBlobs });
+      saveBlobsToStorage(mergedBlobs);
+      if (!getMergedFlag(userId)) {
         setMergedFlag(userId);
         const prefs = loadPreferences();
         await upsertUserBlobs(userId, mergedBlobs, prefs);
-      } else if (cloud?.blobs.length) {
-        dispatch({ type: "SET_BLOBS", payload: cloud.blobs });
-        saveBlobsToStorage(cloud.blobs);
       }
     };
     run();
@@ -175,7 +183,8 @@ export function BlobsProvider({ children }: { children: ReactNode }) {
       if (!cloud) return;
       const current = blobsRef.current;
       const merged = mergeLocalAndCloudBlobs(current, cloud.blobs);
-      if (JSON.stringify(merged) !== JSON.stringify(current)) {
+      if (!blobsEqual(merged, current)) {
+        console.log("[blob sync] poll: cloud has updates, merging", merged.length, "blobs");
         dispatchReducer({ type: "SET_BLOBS", payload: merged });
         saveBlobsToStorage(merged);
       }

@@ -1,5 +1,9 @@
 # Changelog
 
+## 2026-03-07 (latest)
+- Fixed broken app caused by stale dev server: runapp now always kills and restarts the dev server after every build.
+- Added port guards for 3000, 3001, 3002, 3003 in runapp.js to prevent asset hash mismatches.
+
 ## 2026-03-07
 - Build version tooltip shows what's new; hover (desktop) or tap (mobile) the build date in the main menu.
 - Build tooltip now updates after runapp without restarting the dev server.

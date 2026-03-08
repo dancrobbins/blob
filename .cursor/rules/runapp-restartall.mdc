@@ -7,23 +7,39 @@ alwaysApply: true
 
 When the user says **runapp**, **runall**, or **restartall**, do the following. **runall** is an alias for **runapp**. The same rebuild-and-refresh procedure (run runapp script, then browser_tabs, then browser_navigate to refresh) is **mandatory after every feature and bug fix** — see the rule "post-feature-rebuild-and-refresh".
 
+## Canonical port
+
+**The app always runs on `http://localhost:3000`.** After runapp or restartall, always navigate the Cursor Browser to `http://localhost:3000?_=<timestamp>`, never 3001 or any other port.
+
 ## runapp
 
-**Goal:** Reuse the existing dev server and existing Cursor Browser tab. The user must never see Next.js port messages or be told to "open that URL in your browser."
+**Goal:** Kill all existing dev servers, build the app fresh, start a new dev server on port 3000, and refresh the existing Cursor Browser tab to `http://localhost:3000`.
 
-1. Run `npm run runapp` or `npm run runall` (rebuilds the app; starts the dev server only if neither port 3000 nor 3001 is in use; otherwise reuses the existing server).
-2. If the script printed "Dev server starting.", wait briefly (2–3 s) for the server to be ready.
-3. **Always use the existing Cursor Browser:** Call **cursor-ide-browser** MCP `browser_tabs` with `action: "list"`. If any tab's URL is the app (`http://localhost:3000` or `http://localhost:3001`), use `browser_navigate` with that origin and a cache-busting query (e.g. `?_=1` or `?_=1734567890`) so the latest build and build tooltip load. If no tab is on the app, use `browser_navigate` with `http://localhost:3000?_=1` (or 3001 if needed). Reuse the same tab. Do not tell the user to open a URL in their browser or relay any "port in use" / "open that URL" message.
+**runapp ALWAYS kills and restarts the dev server.** This is required because reusing an existing dev server after a new build causes asset hash mismatches — the HTML references new `?v=` timestamps but the old server doesn't serve them, causing CSS/JS 404s and a broken app.
+
+The script:
+1. Kills any existing Next.js dev servers on ports 3000, 3001, 3002, 3003.
+2. Waits briefly for ports to be fully released.
+3. Runs `npm run build`.
+4. Starts a fresh `npm run dev` server on port 3000.
+
+**Do not reuse or navigate to port 3001, 3002, or 3003.**
+
+1. Run `npm run runapp` or `npm run runall`.
+2. Wait 4–6 s for the new dev server to be ready (it always starts fresh).
+3. **Always refresh to port 3000:** Call `browser_tabs` with `action: "list"`. Call `browser_navigate` with `http://localhost:3000?_=<timestamp>`. This ensures the browser loads from the canonical port with the latest build.
 
 ## restartall
 
-1. Run `npm run restartall` (stops any dev server on ports 3000/3001, rebuilds the app, and starts the dev server in the background).
-2. After the command finishes, wait briefly for the dev server to be ready.
-3. Open the app in the **existing** Cursor Browser: use `browser_navigate` to `http://localhost:3000` (or `http://localhost:3001` if 3000 is in use). Reuse the existing tab when possible.
+Same behavior as runapp — use either command interchangeably.
+
+1. Run `npm run restartall` (kills all dev servers on 3000/3001/3002/3003, rebuilds, starts fresh on 3000).
+2. Wait 4–6 s for the server to be ready.
+3. Navigate the existing Cursor Browser tab to `http://localhost:3000?_=<timestamp>`.
 
 ## Summary
 
 | Command     | Script does                          | Agent then                    |
 |------------|---------------------------------------|-------------------------------|
-| **runapp** / **runall** | Build; reuse existing dev server if 3000 or 3001 in use, else start | Refresh existing app tab (same URL); never show port/open-browser messages |
-| **restartall** | Kill ports 3000/3001, build, start dev server | Navigate Cursor Browser to app URL |
+| **runapp** / **runall** | Kill all dev servers on 300x, build, start fresh on 3000 | Wait 4-6s, navigate browser to `http://localhost:3000?_=<ts>` |
+| **restartall** | Kill all dev servers on 300x, build, start fresh on 3000 | Wait 4-6s, navigate browser to `http://localhost:3000?_=<ts>` |

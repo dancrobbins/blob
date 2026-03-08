@@ -1,6 +1,7 @@
 {
   "version": "1.0.0",
   "updates": [
-    "Sign-in no longer sends deployed users to localhost: OAuth redirect URL is rewritten to the current site when Supabase returns localhost."
+    "Fixed broken app caused by stale dev server: runapp now always kills and restarts the dev server after every build.",
+    "Added port guards for 3000, 3001, 3002, 3003 in runapp.js to prevent asset hash mismatches."
   ]
 }
