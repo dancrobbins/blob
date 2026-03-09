@@ -192,9 +192,19 @@ function placeCaretInLine(container: HTMLDivElement, lineIndex: number, offset: 
   walk(textSpan);
 }
 
-/** Alt/Option only (no Ctrl, Meta, or Shift) — used for move line up/down so it works on Windows. */
-function isAltOnly(e: React.KeyboardEvent | KeyboardEvent) {
-  return e.altKey && !e.ctrlKey && !e.metaKey && !e.shiftKey;
+/**
+ * Ctrl+↑/↓ (both Windows and Mac) — used for move line up/down.
+ * This is the one modifier+arrow combo with no OS/browser/Electron intercept:
+ *  - Alt key triggers Windows menu bar / Electron accelerators → arrow never arrives.
+ *  - Ctrl+Alt is intercepted by Intel/AMD graphics drivers (display rotation).
+ *  - Alt+Shift triggers Windows keyboard language switcher.
+ *  - Ctrl+Shift+Arrow extends text selection (undesirable as a move shortcut).
+ *  - Ctrl+↑/↓ inside a focused text field is not claimed by any OS or browser.
+ * We use plain Ctrl on both platforms (not Cmd on Mac) because Cmd+↑/↓ on Mac
+ * is taken by the system to jump to start/end of document.
+ */
+function isMoveMod(e: React.KeyboardEvent | KeyboardEvent) {
+  return e.ctrlKey && !e.shiftKey && !e.altKey && !e.metaKey;
 }
 
 const RAW_INDENT = "  "; // two spaces per indent level in raw markdown
@@ -317,6 +327,7 @@ export function BlobCard({
 }) {
   const { pushUndoSnapshot, incrementMenuOpen, decrementMenuOpen, dispatch } = useBlobsContext();
   const cardRef = useRef<HTMLDivElement>(null);
+  const cardInnerRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
   const rawTextareaRef = useRef<HTMLTextAreaElement>(null);
   /** Content we last sent from this card (typing/paste/blur). Skip rebuilding DOM when blob.content matches so we don't wipe the cursor on every keystroke. */
@@ -331,6 +342,27 @@ export function BlobCard({
   const [dropdownPosition, setDropdownPosition] = useState<{ top: number; left: number } | null>(null);
   const dragStart = useRef({ x: 0, y: 0, blobX: 0, blobY: 0 });
   const popupPortal = usePopupPortal();
+
+  const MIN_BLOB_W = 120;
+  const MIN_BLOB_H = 80;
+  const EDGE_THRESHOLD_SCREEN_W = 100;
+  const EDGE_THRESHOLD_SCREEN_H = 60;
+  const DEFAULT_BLOB_W = 280;
+  const DEFAULT_BLOB_H = 200;
+
+  const [resizingEdge, setResizingEdge] = useState<"n" | "e" | "s" | "w" | null>(null);
+  const [resizeOverlay, setResizeOverlay] = useState<{ width: number; height: number; x: number; y: number } | null>(null);
+  const resizeStartRef = useRef<{
+    edge: "n" | "e" | "s" | "w";
+    startWidth: number;
+    startHeight: number;
+    startX: number;
+    startY: number;
+    startBlobX: number;
+    startBlobY: number;
+    aspectRatio: number;
+  } | null>(null);
+  const resizeOverlayRef = useRef<{ width: number; height: number; x: number; y: number } | null>(null);
 
   useLayoutEffect(() => {
     if (!menuOpen) {
@@ -407,8 +439,8 @@ export function BlobCard({
 
       if (nowRaw && rawTextareaRef.current && onUpdateContent) {
         const ta = rawTextareaRef.current;
-        const isMoveUp = (e.key === "ArrowUp" || e.key === "Up") && isAltOnly(e);
-        const isMoveDown = (e.key === "ArrowDown" || e.key === "Down") && isAltOnly(e);
+        const isMoveUp = (e.key === "ArrowUp" || e.key === "Up") && isMoveMod(e);
+        const isMoveDown = (e.key === "ArrowDown" || e.key === "Down") && isMoveMod(e);
         if (isMoveUp || isMoveDown) {
           const handled = moveRawLine(ta, isMoveUp ? "up" : "down", onUpdateContent);
           if (handled) {
@@ -428,8 +460,8 @@ export function BlobCard({
 
       if (nowPreview && contentRef.current) {
         const el = contentRef.current;
-        const isMoveUp = (e.key === "ArrowUp" || e.key === "Up") && isAltOnly(e);
-        const isMoveDown = (e.key === "ArrowDown" || e.key === "Down") && isAltOnly(e);
+        const isMoveUp = (e.key === "ArrowUp" || e.key === "Up") && isMoveMod(e);
+        const isMoveDown = (e.key === "ArrowDown" || e.key === "Down") && isMoveMod(e);
         if (isMoveUp || isMoveDown) {
           const info = getCurrentLineInfo(el);
           if (!info) return;
@@ -520,6 +552,105 @@ export function BlobCard({
     [isDragging]
   );
 
+  const effectiveX = resizeOverlay?.x ?? blob.x;
+  const effectiveY = resizeOverlay?.y ?? blob.y;
+  const effectiveW = resizeOverlay?.width ?? blob.width ?? undefined;
+  const effectiveH = resizeOverlay?.height ?? blob.height ?? undefined;
+  const showEdgeLeftRight =
+    (effectiveW ?? DEFAULT_BLOB_W) * scale >= EDGE_THRESHOLD_SCREEN_W;
+  const showEdgeTopBottom =
+    (effectiveH ?? DEFAULT_BLOB_H) * scale >= EDGE_THRESHOLD_SCREEN_H;
+
+  const handleResizePointerDown = useCallback(
+    (e: React.PointerEvent, edge: "n" | "e" | "s" | "w") => {
+      if (blob.locked) return;
+      e.preventDefault();
+      e.stopPropagation();
+      const rect = cardInnerRef.current?.getBoundingClientRect();
+      const w =
+        blob.width ??
+        (rect ? rect.width / scale : DEFAULT_BLOB_W);
+      const h =
+        blob.height ??
+        (rect ? rect.height / scale : DEFAULT_BLOB_H);
+      const aspectRatio = w / h;
+      resizeStartRef.current = {
+        edge,
+        startWidth: w,
+        startHeight: h,
+        startX: e.clientX,
+        startY: e.clientY,
+        startBlobX: blob.x,
+        startBlobY: blob.y,
+        aspectRatio,
+      };
+      setResizingEdge(edge);
+      (e.target as HTMLElement).setPointerCapture?.(e.pointerId);
+    },
+    [blob.locked, blob.x, blob.y, blob.width, blob.height, scale]
+  );
+
+  useEffect(() => {
+    if (resizingEdge == null) return;
+    const onMove = (e: PointerEvent) => {
+      const start = resizeStartRef.current;
+      if (!start) return;
+      const dx = (e.clientX - start.startX) / scale;
+      const dy = (e.clientY - start.startY) / scale;
+      let w = start.startWidth;
+      let h = start.startHeight;
+      let x = start.startBlobX;
+      let y = start.startBlobY;
+      if (start.edge === "e") {
+        w = Math.max(MIN_BLOB_W, start.startWidth + dx);
+        h = w / start.aspectRatio;
+      } else if (start.edge === "w") {
+        w = Math.max(MIN_BLOB_W, start.startWidth - dx);
+        h = w / start.aspectRatio;
+        x = start.startBlobX + (start.startWidth - w);
+      } else if (start.edge === "s") {
+        h = Math.max(MIN_BLOB_H, start.startHeight + dy);
+        w = h * start.aspectRatio;
+      } else {
+        h = Math.max(MIN_BLOB_H, start.startHeight - dy);
+        w = h * start.aspectRatio;
+        y = start.startBlobY + (start.startHeight - h);
+      }
+      const next = { width: w, height: h, x, y };
+      resizeOverlayRef.current = next;
+      setResizeOverlay(next);
+    };
+    const onUp = () => {
+      const start = resizeStartRef.current;
+      const overlay = resizeOverlayRef.current;
+      const finalW = overlay?.width ?? start?.startWidth ?? blob.width ?? DEFAULT_BLOB_W;
+      const finalH = overlay?.height ?? start?.startHeight ?? blob.height ?? DEFAULT_BLOB_H;
+      const finalX = overlay?.x ?? blob.x;
+      const finalY = overlay?.y ?? blob.y;
+      dispatch({
+        type: "SET_BLOB_SIZE",
+        payload: { id: blob.id, width: finalW, height: finalH },
+      });
+      if (
+        start &&
+        (start.edge === "w" || start.edge === "n") &&
+        (finalX !== blob.x || finalY !== blob.y)
+      ) {
+        onPosition(finalX, finalY);
+      }
+      resizeStartRef.current = null;
+      resizeOverlayRef.current = null;
+      setResizingEdge(null);
+      setResizeOverlay(null);
+    };
+    document.addEventListener("pointermove", onMove);
+    document.addEventListener("pointerup", onUp);
+    return () => {
+      document.removeEventListener("pointermove", onMove);
+      document.removeEventListener("pointerup", onUp);
+    };
+  }, [resizingEdge, blob.id, blob.x, blob.y, blob.width, blob.height, scale, onPosition, dispatch]);
+
   const handleInput = useCallback(() => {
     if (blob.locked) return;
     const el = contentRef.current;
@@ -574,8 +705,8 @@ export function BlobCard({
         }
       }
 
-      const isMoveUp = (e.key === "ArrowUp" || e.key === "Up") && isAltOnly(e);
-      const isMoveDown = (e.key === "ArrowDown" || e.key === "Down") && isAltOnly(e);
+      const isMoveUp = (e.key === "ArrowUp" || e.key === "Up") && isMoveMod(e);
+      const isMoveDown = (e.key === "ArrowDown" || e.key === "Down") && isMoveMod(e);
       if (isMoveUp && currentIndex > 0) {
         e.preventDefault();
         e.stopPropagation();
@@ -878,7 +1009,7 @@ export function BlobCard({
       data-blob-controls
       data-dragging={isDragging ? "" : undefined}
       data-hovered={isHovered ? "" : undefined}
-      style={{ left: blob.x, top: blob.y }}
+      style={{ left: effectiveX, top: effectiveY }}
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}
       onPointerUp={handlePointerUp}
@@ -940,20 +1071,65 @@ export function BlobCard({
       data-blob-id={blob.id}
       data-testid="blob-card"
       className={styles.cardBodyWrapper}
-      style={{ left: blob.x, top: blob.y }}
+      style={{ left: effectiveX, top: effectiveY }}
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
     >
       <div
+        ref={cardInnerRef}
         className={styles.card}
         data-blob-card-inner
         data-selected={isSelected || undefined}
         data-locked={blob.locked || undefined}
+        style={
+          effectiveW != null && effectiveH != null
+            ? { width: effectiveW, height: effectiveH, minWidth: effectiveW, maxWidth: effectiveW, minHeight: effectiveH }
+            : undefined
+        }
       >
+        {!blob.locked && (
+          <>
+            {showEdgeTopBottom && (
+              <div
+                className={styles.resizeEdge}
+                data-edge="n"
+                onPointerDown={(e) => handleResizePointerDown(e, "n")}
+                aria-hidden
+              />
+            )}
+            {showEdgeLeftRight && (
+              <div
+                className={styles.resizeEdge}
+                data-edge="e"
+                onPointerDown={(e) => handleResizePointerDown(e, "e")}
+                aria-hidden
+              />
+            )}
+            {showEdgeTopBottom && (
+              <div
+                className={styles.resizeEdge}
+                data-edge="s"
+                onPointerDown={(e) => handleResizePointerDown(e, "s")}
+                aria-hidden
+              />
+            )}
+            {showEdgeLeftRight && (
+              <div
+                className={styles.resizeEdge}
+                data-edge="w"
+                onPointerDown={(e) => handleResizePointerDown(e, "w")}
+                aria-hidden
+              />
+            )}
+          </>
+        )}
         {blobMarkdownView === "raw" ? (
           <textarea
             ref={rawTextareaRef}
             className={styles.contentRaw}
+            style={{
+              minHeight: `${Math.max(1, (blob.content ?? "").split(/\n/).length) * 1.5}em`,
+            }}
             data-testid="blob-content"
             value={blob.content ?? ""}
             onChange={(e) => onUpdateContent?.(e.target.value)}
@@ -1028,7 +1204,7 @@ export function BlobCard({
         data-dragging={isDragging ? "" : undefined}
         data-hovered={isHovered ? "" : undefined}
         className={styles.wrapper}
-        style={{ left: blob.x, top: blob.y }}
+        style={{ left: effectiveX, top: effectiveY }}
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}
@@ -1075,15 +1251,60 @@ export function BlobCard({
           </div>
         </div>
         <div
+          ref={cardInnerRef}
           className={styles.card}
           data-blob-card-inner
           data-selected={isSelected || undefined}
           data-locked={blob.locked || undefined}
+          style={
+            effectiveW != null && effectiveH != null
+              ? { width: effectiveW, height: effectiveH, minWidth: effectiveW, maxWidth: effectiveW, minHeight: effectiveH }
+              : undefined
+          }
         >
+          {!blob.locked && (
+            <>
+              {showEdgeTopBottom && (
+                <div
+                  className={styles.resizeEdge}
+                  data-edge="n"
+                  onPointerDown={(e) => handleResizePointerDown(e, "n")}
+                  aria-hidden
+                />
+              )}
+              {showEdgeLeftRight && (
+                <div
+                  className={styles.resizeEdge}
+                  data-edge="e"
+                  onPointerDown={(e) => handleResizePointerDown(e, "e")}
+                  aria-hidden
+                />
+              )}
+              {showEdgeTopBottom && (
+                <div
+                  className={styles.resizeEdge}
+                  data-edge="s"
+                  onPointerDown={(e) => handleResizePointerDown(e, "s")}
+                  aria-hidden
+                />
+              )}
+              {showEdgeLeftRight && (
+                <div
+                  className={styles.resizeEdge}
+                  data-edge="w"
+                  onPointerDown={(e) => handleResizePointerDown(e, "w")}
+                  aria-hidden
+                />
+              )}
+            </>
+          )}
           {blobMarkdownView === "raw" ? (
             <textarea
               ref={rawTextareaRef}
               className={styles.contentRaw}
+              style={{
+                minHeight: `${Math.max(1, (blob.content ?? "").split(/\n/).length) * 1.5}em`,
+              }}
               data-testid="blob-content"
               value={blob.content ?? ""}
               onChange={(e) => onUpdateContent?.(e.target.value)}

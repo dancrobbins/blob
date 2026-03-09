@@ -69,6 +69,7 @@ const MAJOR_ACTIONS = new Set<BlobsAction["type"]>([
   "DUPLICATE_BLOBS",
   "SET_HIDDEN",
   "UNHIDE_ALL",
+  "SET_BLOB_SIZE",
 ]);
 const POSITION_ACTION = "SET_POSITION";
 
@@ -83,6 +84,7 @@ const UNDOABLE_ACTIONS = new Set<BlobsAction["type"]>([
   "SET_LOCKED",
   "SET_HIDDEN",
   "UNHIDE_ALL",
+  "SET_BLOB_SIZE",
 ]);
 
 export function BlobsProvider({ children }: { children: ReactNode }) {

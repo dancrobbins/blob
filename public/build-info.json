@@ -1,8 +1,10 @@
 {
-  "buildNumber": 163,
-  "buildTime": "2026-03-09T03:47:18.562Z",
+  "buildNumber": 172,
+  "buildTime": "2026-03-09T05:39:44.416Z",
   "version": "1.0.0",
   "updates": [
-    "Bullet conversion: parse and serialize only use markdown; leading list markers stripped so bullets never double on login/sync."
+    "Move bullet up/down changed to Ctrl+↑/↓ (same on Windows and Mac) — safest cross-platform arrow shortcut with no OS, browser, or Electron intercept.",
+    "Fixed blob \"...\" menu: Duplicate, Lock, Hide, Delete work; popup layer no longer blocks canvas (portal container pointer-events: none, menu pointer-events: auto).",
+    "Removed pages directory so build no longer fails with _document or pages-manifest errors; app is App Router only."
   ]
 }

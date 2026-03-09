@@ -1,5 +1,16 @@
 # Changelog
 
+## 2026-03-08 (blob menu)
+- Move bullet up/down changed to Ctrl+↑/↓ (same on Windows and Mac) — safest cross-platform arrow shortcut with no OS, browser, or Electron intercept.
+- Fixed blob \"...\" menu: Duplicate, Lock, Hide, Delete work; popup layer no longer blocks canvas (portal container pointer-events: none, menu pointer-events: auto).
+
+## 2026-03-09 (build fix)
+- Removed pages directory (was only _document.tsx) so the build no longer fails with "Cannot find module for page: /_document" or missing pages-manifest; app is App Router only.
+
+## 2026-03-09 (mobile pinch zoom)
+- Move bullet up/down changed to Ctrl+Shift+↑/↓ (Cmd+Shift+↑/↓ on Mac) — Alt+Arrow was intercepted by Electron/Windows menu bar before reaching the app.
+- Fixed two-finger pinch zoom on iOS Safari.
+
 ## 2026-03-09 (blob view)
 - Bullet conversion: parse and serialize only use markdown; leading list markers stripped from line text so bullets never double on login/sync.
 - Move line up/down (Alt+↑/↓) and Tab/Shift+Tab indent work in both Raw and Preview; document-level capture; Raw moves/indents by line in markdown.

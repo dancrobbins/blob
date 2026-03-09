@@ -14,7 +14,8 @@ export type BlobsAction =
   | { type: "DUPLICATE_BLOBS"; payload: string[] }
   | { type: "SET_LOCKED"; payload: { ids: string[]; locked: boolean } }
   | { type: "SET_HIDDEN"; payload: { ids: string[]; hidden: boolean } }
-  | { type: "UNHIDE_ALL" };
+  | { type: "UNHIDE_ALL" }
+  | { type: "SET_BLOB_SIZE"; payload: { id: string; width: number; height: number } };
 
 function generateId(): string {
   return `b_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
@@ -112,6 +113,15 @@ export function blobsReducer(state: Blob[], action: BlobsAction): Blob[] {
       if (!hasHidden) return state;
       const now = new Date().toISOString();
       return state.map((b) => (b.hidden ? { ...b, hidden: false, updatedAt: now } : b));
+    }
+    case "SET_BLOB_SIZE": {
+      const { id, width, height } = action.payload;
+      const blob = state.find((b) => b.id === id);
+      if (!blob || blob.locked) return state;
+      const now = new Date().toISOString();
+      return state.map((b) =>
+        b.id === id ? { ...b, width, height, updatedAt: now } : b
+      );
     }
     default:
       return state;

@@ -16,6 +16,7 @@
 }
 
 .card {
+  position: relative;
   min-width: 180px;
   max-width: 320px;
   display: flex;
@@ -27,6 +28,7 @@
   box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06);
   padding: 10px 12px;
   cursor: default;
+  overflow: auto;
 }
 
 [data-theme="dark"] .card {
@@ -53,6 +55,51 @@
 
 [data-theme="dark"] .card[data-locked] {
   box-shadow: none;
+}
+
+/* Resize edges: thin hit area on each side; subtle hover cue */
+.resizeEdge {
+  position: absolute;
+  z-index: 1;
+  pointer-events: auto;
+  transition: background 0.12s ease, box-shadow 0.12s ease;
+}
+.resizeEdge:hover {
+  background: var(--blob-resize-cue, rgba(0, 120, 212, 0.08));
+  box-shadow: inset 0 0 0 1px var(--blob-resize-cue-border, rgba(0, 120, 212, 0.25));
+}
+.resizeEdge[data-edge="n"] {
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 6px;
+  cursor: n-resize;
+}
+.resizeEdge[data-edge="e"] {
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 6px;
+  cursor: e-resize;
+}
+.resizeEdge[data-edge="s"] {
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 6px;
+  cursor: s-resize;
+}
+.resizeEdge[data-edge="w"] {
+  top: 0;
+  left: 0;
+  bottom: 0;
+  width: 6px;
+  cursor: w-resize;
+}
+
+[data-theme="dark"] .resizeEdge:hover {
+  --blob-resize-cue: rgba(100, 180, 255, 0.1);
+  --blob-resize-cue-border: rgba(100, 180, 255, 0.35);
 }
 
 .controlsColumn {

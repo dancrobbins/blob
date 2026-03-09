@@ -24,6 +24,9 @@ export interface Blob {
   updatedAt: string;
   locked?: boolean;
   hidden?: boolean;
+  /** Explicit size (px in blob/canvas space). When set, changing width adjusts height (and vice versa) to keep aspect ratio. */
+  width?: number;
+  height?: number;
 }
 
 /** How blob text is shown: raw markdown source or preview (line-based editor). */

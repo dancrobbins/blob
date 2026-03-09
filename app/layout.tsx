@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Suspense } from "react";
 import "./globals.css";
 import { BlobsProvider } from "@/contexts/BlobsContext";
@@ -9,6 +9,14 @@ import { AuthHashRedirect } from "@/components/AuthHashRedirect";
 import { AppErrorBoundary } from "@/components/AppErrorBoundary";
 import { ConnectivityGuard } from "@/components/ConnectivityGuard";
 import { E2ESyncOverlay } from "@/components/e2e/E2ESyncOverlay";
+
+/** Allow pinch-zoom on iOS Safari so two-finger gestures are treated as zoom, not "pull out of tab". */
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 5,
+  userScalable: true,
+};
 
 export const metadata: Metadata = {
   title: "blob",

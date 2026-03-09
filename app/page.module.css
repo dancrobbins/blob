@@ -15,6 +15,9 @@
   z-index: 1;
   -webkit-tap-highlight-color: transparent;
   overflow: hidden;
+  /* Claim all touch gestures so iOS Safari delivers pinch to our handlers
+     instead of interpreting two-finger as "pull out of tab". */
+  touch-action: none;
 }
 
 .canvasInner {
@@ -50,6 +53,11 @@
   pointer-events: none;
 }
 
+/* Portal container: none so canvas receives events; portaled menu uses pointer-events: auto */
 .popupLayer > * {
+  pointer-events: none;
+}
+
+.popupLayer > * > * {
   pointer-events: auto;
 }

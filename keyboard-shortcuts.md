@@ -4,7 +4,7 @@ These shortcuts apply when the caret is in an active text insertion point (editi
 
 | Action | Windows | Mac |
 |--------|---------|-----|
-| Move current bullet point **before** the preceding bullet point (if there is one) | **Alt+↑** | **Option+↑** |
-| Move current bullet point **after** the next bullet point (if there is one) | **Alt+↓** | **Option+↓** |
+| Move current bullet point **before** the preceding bullet point (if there is one) | **Ctrl+↑** | **Ctrl+↑** |
+| Move current bullet point **after** the next bullet point (if there is one) | **Ctrl+↓** | **Ctrl+↓** |
 | Indent the current bullet point by one level | **Tab** | **Tab** |
 | Unindent the current bullet point by one level (no effect if already at indent 0) | **Shift+Tab** | **Shift+Tab** |
