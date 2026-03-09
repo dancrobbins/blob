@@ -1,6 +1,6 @@
 {
   "version": "1.0.0",
   "updates": [
-    "When Gemini rate limit is hit, Blobby says: \"The AI limit has been reached. Try again tomorrow.\""
+    "Bullet conversion: parse and serialize only use markdown; leading list markers stripped so bullets never double on login/sync."
   ]
 }

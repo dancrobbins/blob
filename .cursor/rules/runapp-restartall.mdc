@@ -1,11 +1,11 @@
 ---
-description: Commands "runapp", "runall", "reloadapp", "rerunapp" (aliases), "restartall" — rebuild/restart dev server and open app in Cursor Browser
+description: Commands "runapp", "runall", "reloadapp", "rerunapp" (aliases), "restartall", "killAll" — rebuild/restart/kill dev server and open app in Cursor Browser
 alwaysApply: true
 ---
 
 # runapp and restartall commands
 
-When the user says **runapp**, **runall**, **reloadapp**, **rerunapp**, or **restartall**, do the following. **runall**, **reloadapp**, and **rerunapp** are aliases for **runapp**. The same rebuild-and-refresh procedure (run runapp script, then browser_tabs, then browser_navigate to open or refresh the app tab) is **mandatory after every feature and bug fix** — see the rule "post-feature-rebuild-and-refresh".
+When the user says **runapp**, **runall**, **reloadapp**, **rerunapp**, **restartall**, or **killAll**, do the following. **runall**, **reloadapp**, and **rerunapp** are aliases for **runapp**. The same rebuild-and-refresh procedure (run runapp script, then browser_tabs, then browser_navigate to open or refresh the app tab) is **mandatory after every feature and bug fix** — see the rule "post-feature-rebuild-and-refresh".
 
 ## Canonical port
 
@@ -35,9 +35,14 @@ The script:
 2. Wait 4–6 s for the server to be ready.
 3. **Open or refresh Cursor Browser:** Same as runapp — call `browser_tabs` (list); if no tab has `localhost:3000`, call `browser_navigate` with `newTab: true`; otherwise call `browser_navigate` to `http://localhost:3000?_=<timestamp>` to refresh.
 
+## killAll
+
+When the user says **killAll**, run `npm run killAll`. The script stops all processes on ports 3000, 3001, 3002, 3003 (dev servers started by Cursor). It does not build or start anything. No browser step.
+
 ## Summary
 
 | Command     | Script does                          | Agent then                    |
 |------------|---------------------------------------|-------------------------------|
 | **runapp** / **runall** / **reloadapp** / **rerunapp** | Build always; start dev server on 3000 only if none running | Wait 4-6s; list tabs; open or refresh Cursor Browser to localhost:3000 |
 | **restartall** | Always kill 3000/3001, build, start fresh on 3000 | Wait 4-6s; open or refresh Cursor Browser to localhost:3000 |
+| **killAll** | Kill dev servers on 3000–3003 only (no build, no start) | None |

@@ -1,11 +1,12 @@
 import type { Blob, BlobLine, BlobLineStyle } from "./types";
+import { linesToMarkdown, markdownToPlainText } from "./blob-markdown";
 
 const LEGACY_BULLET = "• ";
 const BULLET_CHAR = "• ";
 
 /**
  * Parse legacy blob content (plain string with "• " at line starts) into BlobLine[].
- * Used when loading blobs that have content but no lines.
+ * Used when migrating old blobs that had content but no lines.
  */
 export function parseLegacyContent(content: string): BlobLine[] {
   if (!content || typeof content !== "string") return [{ text: "", style: "bullet" }];
@@ -21,16 +22,26 @@ export function parseLegacyContent(content: string): BlobLine[] {
 }
 
 /**
- * Normalize a blob so it always has lines. If it has legacy content and no lines, parse and set lines.
- * Does not mutate; returns a new blob.
+ * Normalize a blob to markdown source of truth. Migrates old blobs that have `lines` or
+ * legacy `content` (plain text with "• ") into `content` (markdown) and drops `lines`.
+ * Does not mutate; returns a new blob with content set and lines removed.
  */
 export function normalizeBlob(blob: Blob): Blob {
-  if (blob.lines != null && Array.isArray(blob.lines) && blob.lines.length > 0) {
-    return blob;
+  const hasLines = blob.lines != null && Array.isArray(blob.lines);
+  if (hasLines && blob.lines!.length > 0) {
+    const content = linesToMarkdown(blob.lines!);
+    return { ...blob, content, lines: undefined };
   }
-  const content = blob.content ?? "";
-  const lines = parseLegacyContent(content);
-  return { ...blob, lines };
+  if (hasLines && blob.lines!.length === 0) {
+    return { ...blob, content: "", lines: undefined };
+  }
+  const raw = blob.content ?? "";
+  if (raw.includes(LEGACY_BULLET)) {
+    const lines = parseLegacyContent(raw);
+    const content = linesToMarkdown(lines);
+    return { ...blob, content, lines: undefined };
+  }
+  return { ...blob, content: raw, lines: undefined };
 }
 
 /**
@@ -41,14 +52,13 @@ export function blobLinesToPlainText(lines: BlobLine[]): string {
 }
 
 /**
- * Get plain text from a blob (uses lines if present, else parses legacy content).
+ * Get plain text from a blob. Uses blob.content (markdown) and strips markdown syntax.
+ * For normalized blobs, content is always set.
  */
 export function blobToPlainText(blob: Blob): string {
-  if (blob.lines != null && blob.lines.length > 0) {
-    return blobLinesToPlainText(blob.lines);
-  }
-  const lines = parseLegacyContent(blob.content ?? "");
-  return blobLinesToPlainText(lines);
+  const md = blob.content ?? "";
+  if (!md) return "";
+  return markdownToPlainText(md);
 }
 
 /** MIME type for our rich clipboard format (JSON lines). */
@@ -121,11 +131,18 @@ const EXTERNAL_BULLET_PATTERN = /^[\s]*([•·▪▸►\-\*]\s+)/;
 /**
  * Parse pasted HTML or plain text from another app into BlobLine[].
  * Detects list items (ul/ol/li) and leading bullets/dashes; maps indentation to indent style.
+ * Prefers plain text when it's much longer than HTML-derived content so we don't drop pasted
+ * text (e.g. copying from a page that puts a short list in HTML but full selection in plain).
  */
 export function parsePastedContent(html: string | null, plainText: string): BlobLine[] {
+  const plainLen = (plainText ?? "").length;
   if (html && html.trim().length > 0) {
     const fromHtml = parseHtmlToList(html);
-    if (fromHtml.length > 0) return fromHtml;
+    if (fromHtml.length > 0) {
+      const htmlTextLen = fromHtml.reduce((s, l) => s + (l.text?.length ?? 0), 0);
+      // Use HTML only if it captured a reasonable share of content; otherwise plain text has the full paste
+      if (plainLen <= 0 || htmlTextLen >= plainLen * 0.5) return fromHtml;
+    }
   }
   return parsePlainTextToList(plainText);
 }

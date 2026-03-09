@@ -48,6 +48,8 @@ type BlobsContextValue = {
   preferences: Preferences;
   setPreferences: (p: Preferences | ((prev: Preferences) => Preferences)) => void;
   userId: string | null;
+  /** Whose board we're viewing. Today = userId; later can be set by share link (e.g. /view/:ownerId). Used for presence channel. */
+  boardOwnerId: string | null;
   isLoading: boolean;
   /** Ref: true when any popup menu (header or blob "...") is open. Used by canvas to avoid adding a blob when tap closes a menu. */
   anyMenuOpenRef: React.MutableRefObject<boolean>;
@@ -264,10 +266,13 @@ export function BlobsProvider({ children }: { children: ReactNode }) {
     run();
   }, [userId]);
 
-  // On logout: reset scene and clear all data; no blobs on canvas or in storage
+  // On logout or account switch: clear scene and local cache for security and privacy
   useEffect(() => {
-    if (userId === null && prevUserIdRef.current !== null) {
-      const loggedOutUserId = prevUserIdRef.current;
+    const prevUserId = prevUserIdRef.current;
+    const isLogout = userId === null && prevUserId !== null;
+    const isAccountSwitch = userId !== null && prevUserId !== null && userId !== prevUserId;
+
+    if (isLogout || isAccountSwitch) {
       clearSaveTimeout();
       if (positionSaveTimeoutRef.current) {
         clearTimeout(positionSaveTimeoutRef.current);
@@ -277,7 +282,7 @@ export function BlobsProvider({ children }: { children: ReactNode }) {
       setUndoStack([]);
       setRedoStack([]);
       saveBlobsToStorage([]);
-      clearMergedFlag(loggedOutUserId);
+      if (prevUserId) clearMergedFlag(prevUserId);
     }
     prevUserIdRef.current = userId;
   }, [userId]);
@@ -364,6 +369,7 @@ export function BlobsProvider({ children }: { children: ReactNode }) {
     preferences,
     setPreferences,
     userId,
+    boardOwnerId: userId,
     isLoading,
     anyMenuOpenRef,
     incrementMenuOpen,

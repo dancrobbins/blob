@@ -107,18 +107,28 @@ function printPlainEnglishSummary(exitCode, resultsPath) {
   console.log("");
 }
 
-// Kill existing dev servers
-const NEXT_PORTS = [3000, 3001, 3002, 3003];
-for (const port of NEXT_PORTS) {
-  if (isPortInUse(port)) {
-    console.log(`Stopping existing dev server on port ${port}...`);
-    killPort(port);
-  }
-}
-execSync(`node -e "setTimeout(()=>{},1200)"`, { cwd: root, stdio: "ignore", windowsHide: true });
+// The test runs its own dev server on port 3001 so it never disturbs
+// the normal dev tab at localhost:3000.
+const TEST_PORT = 3001;
 
-console.log("Building app...");
+// Kill any stale process on port 3001 BEFORE clearing .next,
+// so no locked files cause the clean to fail.
+if (isPortInUse(TEST_PORT)) {
+  console.log(`Stopping existing dev server on port ${TEST_PORT}...`);
+  killPort(TEST_PORT);
+  execSync(`node -e "setTimeout(()=>{},1500)"`, { cwd: root, stdio: "ignore", windowsHide: true });
+}
+
+console.log("Building app (clearing Next.js cache first)...");
 try {
+  // Clear the Next.js incremental build cache to avoid stale type errors.
+  // Do this after killing the dev server so files are not locked.
+  const nextDir = path.join(root, ".next");
+  if (fs.existsSync(nextDir)) {
+    fs.rmSync(nextDir, { recursive: true, force: true });
+    // Short pause to ensure the OS releases any file handles
+    execSync(`node -e "setTimeout(()=>{},500)"`, { cwd: root, stdio: "ignore", windowsHide: true });
+  }
   execSync("npm run build", { cwd: root, stdio: "inherit" });
 } catch (e) {
   console.error("Build failed. Aborting test run.");
@@ -126,21 +136,28 @@ try {
   process.exit(1);
 }
 
-const dev = spawn("npm", ["run", "dev"], {
+const dev = spawn("npm", ["run", "dev", "--", "--port", String(TEST_PORT)], {
   cwd: root,
   stdio: "ignore",
   detached: true,
   shell: true,
 });
 dev.unref();
-console.log("Dev server starting on port 3000. Waiting 6s for it to be ready...");
+console.log(`Test dev server starting on port ${TEST_PORT}. Waiting 6s for it to be ready...`);
 execSync(`node -e "setTimeout(()=>{},6000)"`, { cwd: root, stdio: "ignore", windowsHide: true });
+
+// Point Playwright at the test server
+process.env.PLAYWRIGHT_BASE_URL = `http://localhost:${TEST_PORT}`;
 
 if (!process.env.PLAYWRIGHT_CDP_URL) {
   process.env.PLAYWRIGHT_CDP_URL = "http://127.0.0.1:9222";
   console.log("Using Cursor Browser / CDP at " + process.env.PLAYWRIGHT_CDP_URL + " (set PLAYWRIGHT_CDP_URL to override).\n");
 }
-console.log("Running two-tab sync tests (tabs only in existing browser, no new window)...\n");
+console.log("Ensuring Playwright Chromium is installed (for fallback when CDP is not available)...");
+try {
+  execSync("npx playwright install chromium", { cwd: root, stdio: "pipe", windowsHide: true });
+} catch (_) {}
+console.log("Running two-tab sync tests...\n");
 let testExitCode = 0;
 try {
   execSync("npx playwright test tests/e2e/google-sync-two-tab.spec.ts --project=default", {

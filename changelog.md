@@ -1,6 +1,35 @@
 # Changelog
 
+## 2026-03-09 (blob view)
+- Bullet conversion: parse and serialize only use markdown; leading list markers stripped from line text so bullets never double on login/sync.
+- Move line up/down (Alt+↑/↓) and Tab/Shift+Tab indent work in both Raw and Preview; document-level capture; Raw moves/indents by line in markdown.
+- On logout or switch account: clear all blobs from the scene and remove blob data from local cache for security and privacy.
+- Main menu: Blob text toggle (Raw / Preview). Raw shows markdown source in an editable textarea; Preview shows the line-based editor (bullets, todos). Both modes editable; preference persisted.
+- Preview mode: fixed typing by not rebuilding DOM on every keystroke; only sync from blob.content when content came from outside (e.g. sync) or when switching blob/view.
+
+## 2026-03-09 (multi-cursor)
+- Multi-cursor presence on canvas: when logged in with Google, other sessions (same user on other tabs or devices) show a cursor with display name and avatar; same user on multiple sessions gets disambiguated labels (e.g. \"Name 1\", \"Name 2\").
+- Board owner id in BlobsContext for presence channel; design allows shared boards later (viewers join owner's channel).
+- Presence via Supabase Realtime; cursor position in world coordinates, throttled updates; OtherCursors component with pointer, avatar circle, and label.
+
+## 2026-03-08 (later)
+- Blob internal representation is now standard Markdown; content stored as markdown string. Migration: old blobs with lines or legacy • content are converted to markdown on load.
+- Copy/paste uses markdown; in-app paste round-trips bullets, todos, numbered lists, strikeout. Summarize and title APIs use plain text derived from markdown.
+- Paste from web: use full plain text when HTML only had a short snippet so large pastes are no longer truncated.
+
+## 2026-03-09
+- testSync fixture: complete rewrite — uses launchPersistentContext directly without a broken browser wrapper; isolated temp profile deleted after each run.
+- testSync login detection: polls Supabase localStorage token (sb-*-auth-token) instead of waiting for toast to hide; reloads tabs every 5s until session is detected, handles OAuth redirects that open in extra tabs.
+- Fixed build error in blob-markdown.ts: token.raw access now uses (token as any).raw with split('\n')[0] instead of /s regex flag (not supported at current TS target).
+- Fixed build error in page.tsx: UPDATE_BLOB dispatch now converts BlobLine[] to markdown string via linesToMarkdown() to match the action type.
+
 ## 2026-03-08
+- Fixed Backspace on empty line: caret now moves to end of previous line (deferred with rAF); placeCaretInLine supports multiple text nodes per line.
+- Raw and Preview: locked blobs are read-only in both modes; Preview-only effects run only in Preview; Undo snapshot when focusing Raw so Undo works after editing in Raw.
+- Backspace on an empty bullet line deletes that line and moves the caret to the end of the previous line; if it's the only line, caret stays after the bullet.
+- Move bullet up/down now Alt+↑ and Alt+↓ (Option+↑/↓ on Mac) so they work on Windows; keyboard-shortcuts.md updated.
+- Fixed Login: when OAuth redirects to / with ?code=... (instead of /auth/callback), redirect to callback so the session is established.
+- Move line up/down (Ctrl+Alt+↑/↓) now handled in capture phase so they work like OneNote; also accept Up/Down key names.
 - When Gemini rate limit (429) is hit, Blobby shows: \"The AI limit has been reached. Try again tomorrow.\"
 - Keyboard shortcuts when editing a blob: Ctrl+Alt+↑/↓ move bullet before/after adjacent; Tab indents, Shift+Tab unindents (Mac: Ctrl+Option+↑/↓).
 - Bullet indent levels (0–5) with Tab/Shift+Tab; new lines inherit current line indent.

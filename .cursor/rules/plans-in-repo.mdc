@@ -1,0 +1,16 @@
+---
+description: All plans live in the repo under plans/ and are committed and pushed with the rest of the codebase
+alwaysApply: true
+---
+
+# Plans are part of the repo
+
+**All plans must live in the project and be version-controlled.**
+
+1. **Location:** Store every plan in the **`plans/`** directory at the project root (e.g. `plans/feature-name.md`, `plans/2025-03-refactor.md`). If a plan is created or discussed and would otherwise live only in chat or outside the repo, create or update a file under `plans/` so it is part of the repo.
+
+2. **Commit and push:** Plans are normal repo content. When you commit (including **pushme** / **pushall**), include changes under `plans/` like any other file. Do not exclude the `plans/` directory from commits or pushes.
+
+3. **Creating or saving a plan:** When writing or saving a plan, put it in `plans/` with a clear filename (e.g. `plans/auth-redesign.md`). If the user asks to "save this plan" or "add this to the repo", write the plan into a file under `plans/` and ensure it will be committed on the next push.
+
+Summary: **Plans go in `plans/`. They are committed and pushed with the rest of the repo.**

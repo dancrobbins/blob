@@ -1,4 +1,4 @@
-import type { Blob, BlobLine } from "./types";
+import type { Blob } from "./types";
 import { normalizeBlob } from "./blob-lines";
 
 const DUPLICATE_OFFSET = 24;
@@ -6,7 +6,7 @@ const DUPLICATE_OFFSET = 24;
 export type BlobsAction =
   | { type: "SET_BLOBS"; payload: Blob[] }
   | { type: "ADD_BLOB"; payload: { x: number; y: number } }
-  | { type: "UPDATE_BLOB"; payload: { id: string; lines?: BlobLine[] } }
+  | { type: "UPDATE_BLOB"; payload: { id: string; content?: string } }
   | { type: "SET_POSITION"; payload: { id: string; x: number; y: number } }
   | { type: "DUPLICATE_BLOB"; payload: string }
   | { type: "DELETE_BLOB"; payload: string }
@@ -26,7 +26,7 @@ function createBlob(x: number, y: number): Blob {
     id: generateId(),
     x,
     y,
-    lines: [{ text: "", style: "bullet" }],
+    content: "",
     createdAt: now,
     updatedAt: now,
   };
@@ -41,11 +41,11 @@ export function blobsReducer(state: Blob[], action: BlobsAction): Blob[] {
       return [...state, blob];
     }
     case "UPDATE_BLOB": {
-      const { id, lines } = action.payload;
-      if (lines === undefined) return state;
+      const { id, content } = action.payload;
+      if (content === undefined) return state;
       const now = new Date().toISOString();
       return state.map((b) =>
-        b.id === id ? { ...b, lines, updatedAt: now } : b
+        b.id === id ? { ...b, content, updatedAt: now } : b
       );
     }
     case "SET_POSITION": {

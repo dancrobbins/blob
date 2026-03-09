@@ -355,6 +355,41 @@ export function Header({
               </div>
             </div>
             <div className={styles.menuSection}>
+              <span className={styles.menuLabel}>Blob text</span>
+              <div className={styles.themeTabs} role="tablist" aria-label="Blob text view">
+                <div
+                  className={styles.themeTabSelector}
+                  style={{
+                    transform:
+                      preferences.blobMarkdownView === "preview"
+                        ? "translateX(100%)"
+                        : "translateX(0)",
+                  }}
+                  aria-hidden
+                />
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={preferences.blobMarkdownView === "raw"}
+                  className={styles.themeTab}
+                  data-testid="blob-view-raw"
+                  onClick={() => setPreferences((p) => ({ ...p, blobMarkdownView: "raw" }))}
+                >
+                  Raw
+                </button>
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={preferences.blobMarkdownView === "preview"}
+                  className={styles.themeTab}
+                  data-testid="blob-view-preview"
+                  onClick={() => setPreferences((p) => ({ ...p, blobMarkdownView: "preview" }))}
+                >
+                  Preview
+                </button>
+              </div>
+            </div>
+            <div className={styles.menuSection}>
               <button
                 type="button"
                 className={styles.menuAction}

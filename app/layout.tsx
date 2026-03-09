@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Suspense } from "react";
 import "./globals.css";
 import { BlobsProvider } from "@/contexts/BlobsContext";
+import { PresenceProvider } from "@/contexts/PresenceContext";
 import { ThemeApplied } from "@/components/ThemeApplied";
 import { TypeScriptErrorsDebug } from "@/components/TypeScriptErrorsDebug";
 import { AuthHashRedirect } from "@/components/AuthHashRedirect";
@@ -32,6 +33,7 @@ export default function RootLayout({
       <body>
         <AppErrorBoundary>
           <BlobsProvider>
+            <PresenceProvider>
             <ConnectivityGuard>
               <AuthHashRedirect />
               <ThemeApplied>{children}</ThemeApplied>
@@ -40,6 +42,7 @@ export default function RootLayout({
               </Suspense>
               <TypeScriptErrorsDebug />
             </ConnectivityGuard>
+            </PresenceProvider>
           </BlobsProvider>
         </AppErrorBoundary>
       </body>

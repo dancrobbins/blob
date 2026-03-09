@@ -1,5 +1,5 @@
-/** Line-level style; extensible for indent, todo, strikeout later. */
-export type BlobLineStyle = "bullet" | "indent" | "todo" | "strikeout";
+/** Line-level style; used for editing representation (not persisted; blob stores markdown). */
+export type BlobLineStyle = "bullet" | "indent" | "todo" | "strikeout" | "ordered";
 
 export interface BlobLine {
   text: string;
@@ -8,21 +8,26 @@ export interface BlobLine {
   checked?: boolean;
   /** Indent level (0 = top level). Omitted or 0 = no indent. */
   indent?: number;
+  /** Used when style is "ordered" (numbered list). 1-based. */
+  number?: number;
 }
 
 export interface Blob {
   id: string;
   x: number;
   y: number;
-  /** @deprecated Use lines instead. Parsed on load when lines is missing. */
-  content?: string;
-  /** Structured lines (text + style). When present, this is the source of truth. */
+  /** Markdown source of truth. Persisted and synced. */
+  content: string;
+  /** @deprecated Only present when loading old data; migration converts to content and drops this. */
   lines?: BlobLine[];
   createdAt: string;
   updatedAt: string;
   locked?: boolean;
   hidden?: boolean;
 }
+
+/** How blob text is shown: raw markdown source or preview (line-based editor). */
+export type BlobMarkdownView = "raw" | "preview";
 
 export interface Preferences {
   theme: "light" | "dark";
@@ -31,6 +36,8 @@ export interface Preferences {
   blobbyBackerSizePx: number;
   /** Whether Blobby talks proactively: "silent" | "commenting". */
   blobbyCommenting: "silent" | "commenting";
+  /** Blob text: show raw markdown or preview (bullets/todos). */
+  blobMarkdownView: BlobMarkdownView;
 }
 
 export const DEFAULT_PREFERENCES: Preferences = {
@@ -38,6 +45,7 @@ export const DEFAULT_PREFERENCES: Preferences = {
   blobbyColor: "pink",
   blobbyBackerSizePx: 200,
   blobbyCommenting: "silent",
+  blobMarkdownView: "preview",
 };
 
 export const BLOBBY_GRID_ROWS = 3;

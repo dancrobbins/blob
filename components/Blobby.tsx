@@ -196,7 +196,7 @@ export function Blobby() {
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
-        pointerEvents: "auto",
+        pointerEvents: "none",
         overflow: "visible",
         zIndex: 3,
       }}

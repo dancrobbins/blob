@@ -1,0 +1,65 @@
+.layer {
+  position: fixed;
+  inset: 0;
+  z-index: 5;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.cursor {
+  position: fixed;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  transform: translate(2px, 2px);
+  white-space: nowrap;
+}
+
+.pointer {
+  width: 0;
+  height: 0;
+  border-left: 6px solid currentColor;
+  border-top: 4px solid transparent;
+  border-bottom: 4px solid transparent;
+  flex-shrink: 0;
+}
+
+.avatar {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  object-fit: cover;
+  flex-shrink: 0;
+  background: var(--bg);
+  border: 1px solid var(--muted);
+}
+
+.avatarPlaceholder {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 600;
+  background: var(--bg);
+  border: 1px solid var(--muted);
+  color: var(--muted);
+}
+
+.label {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--fg);
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: var(--word-box-bg);
+  border: 1px solid var(--muted);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06);
+}
+
+[data-theme="dark"] .label {
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+}

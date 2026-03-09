@@ -11,7 +11,10 @@ import {
 } from "@/components/SelectionOverlay";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { useBlobsContext } from "@/contexts/BlobsContext";
+import { usePresence } from "@/contexts/PresenceContext";
+import { OtherCursors } from "@/components/OtherCursors";
 import { blobToPlainText } from "@/lib/blob-lines";
+import { linesToMarkdown } from "@/lib/blob-markdown";
 import { ControlsPortalProvider, useControlsPortal } from "@/contexts/ControlsPortalContext";
 import { PopupPortalProvider, usePopupPortal } from "@/contexts/PopupPortalContext";
 import styles from "./page.module.css";
@@ -118,6 +121,7 @@ function screenToWorld(
 
 export default function Home() {
   const { blobs, dispatch, anyMenuOpenRef, undo, redo, canUndo, canRedo, preferences } = useBlobsContext();
+  const { updateLocalCursor, otherPresences } = usePresence();
   const canvasRef = useRef<HTMLDivElement>(null);
   const canvasInnerRef = useRef<HTMLDivElement>(null);
   const pointerDownOnCanvas = useRef(false);
@@ -287,6 +291,16 @@ export default function Home() {
 
   const handlePointerMove = useCallback((e: React.PointerEvent) => {
     activePointersRef.current.set(e.pointerId, { clientX: e.clientX, clientY: e.clientY });
+    if (activePointersRef.current.size === 1) {
+      const { x: worldX, y: worldY } = screenToWorld(
+        e.clientX,
+        e.clientY,
+        panRef.current.x,
+        panRef.current.y,
+        scaleRef.current
+      );
+      updateLocalCursor(worldX, worldY);
+    }
     const pointers = activePointersRef.current;
     if (pointers.size === 2 && pointerDownOnCanvas.current) {
       const [[, a], [, b]] = Array.from(pointers.entries());
@@ -349,7 +363,7 @@ export default function Home() {
       selectionRectRef.current = rect;
       setSelectionRect(rect);
     }
-  }, []);
+  }, [updateLocalCursor]);
 
   const handlePointerUp = useCallback(
     (e: React.PointerEvent<HTMLDivElement>) => {
@@ -563,12 +577,22 @@ export default function Home() {
           <BlobCard
             key={blob.id}
             blob={blob}
+            blobMarkdownView={preferences.blobMarkdownView}
             scale={scale}
             isSelected={selectedIds.includes(blob.id)}
             autoFocus={blob.id === focusBlobId}
             onAutoFocusDone={() => setFocusBlobId(null)}
             onUpdate={(lines) =>
-              dispatch({ type: "UPDATE_BLOB", payload: { id: blob.id, lines } })
+              dispatch({
+                type: "UPDATE_BLOB",
+                payload: { id: blob.id, content: linesToMarkdown(lines) },
+              })
+            }
+            onUpdateContent={(content) =>
+              dispatch({
+                type: "UPDATE_BLOB",
+                payload: { id: blob.id, content },
+              })
             }
             onPosition={(x, y) =>
               dispatch({
@@ -586,6 +610,8 @@ export default function Home() {
         ))}
         </div>
       </div>
+
+      <OtherCursors presences={otherPresences} pan={pan} scale={scale} />
 
       {selectionRect && selectionRect.width > 0 && selectionRect.height > 0 && (
         <SelectionRect

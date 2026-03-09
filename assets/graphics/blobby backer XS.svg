@@ -2,7 +2,7 @@
 <circle cx="57" cy="57" r="57" fill="url(#paint0_radial_5048_4248)"/>
 <defs>
 <radialGradient id="paint0_radial_5048_4248" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(57 57) rotate(90) scale(57)">
-<stop offset="0.82252" stop-color="#F7F7F7"/>
+<stop offset="0.82252" stop-color="#F9F9F9"/>
 <stop offset="1" stop-color="white" stop-opacity="0"/>
 </radialGradient>
 </defs>

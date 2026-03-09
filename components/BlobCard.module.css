@@ -143,6 +143,35 @@
   word-break: break-word;
 }
 
+.contentRaw {
+  flex: 1;
+  min-width: 0;
+  width: 100%;
+  padding: 0 4px 0 0;
+  min-height: 1.5em;
+  font-size: 0.9375rem;
+  line-height: 1.5;
+  color: var(--fg, #111);
+  word-break: break-word;
+  border: none;
+  background: transparent;
+  resize: none;
+  font-family: inherit;
+}
+
+.contentRaw:focus {
+  outline: none;
+}
+
+.contentRaw[data-locked] {
+  cursor: default;
+  opacity: 0.85;
+}
+
+.content[data-locked] {
+  cursor: default;
+}
+
 .line {
   display: flex;
   align-items: flex-start;
@@ -285,6 +314,10 @@
 
 [data-theme="dark"] .content {
   --fg: #eee;
+}
+
+[data-theme="dark"] .contentRaw {
+  color: #eee;
 }
 
 [data-theme="dark"] .bullet {

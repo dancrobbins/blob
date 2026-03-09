@@ -16,6 +16,7 @@ export function loadPreferences(): Preferences {
       blobbyColor: parsed.blobbyColor ?? (parsed as { characterColor?: string }).characterColor ?? DEFAULT_PREFERENCES.blobbyColor,
       blobbyBackerSizePx: Number.isFinite(clamped) ? clamped : DEFAULT_PREFERENCES.blobbyBackerSizePx,
       blobbyCommenting: parsed.blobbyCommenting === "commenting" ? "commenting" : DEFAULT_PREFERENCES.blobbyCommenting,
+      blobMarkdownView: parsed.blobMarkdownView === "raw" ? "raw" : DEFAULT_PREFERENCES.blobMarkdownView,
     };
   } catch {
     return DEFAULT_PREFERENCES;
@@ -44,5 +45,6 @@ export function mergeCloudPreferences(
     blobbyColor: cloud.blobbyColor ?? (cloud as { characterColor?: string }).characterColor ?? current.blobbyColor,
     blobbyBackerSizePx: Number.isFinite(clamped) ? clamped : current.blobbyBackerSizePx,
     blobbyCommenting: cloud.blobbyCommenting === "commenting" ? "commenting" : current.blobbyCommenting,
+    blobMarkdownView: cloud.blobMarkdownView === "raw" ? "raw" : current.blobMarkdownView,
   };
 }

@@ -3,81 +3,75 @@
 import React, { useEffect, useState, useRef } from "react";
 import { useBlobsContext } from "@/contexts/BlobsContext";
 
-const CHANNEL_NAME = "e2eSyncAuth";
+/**
+ * Each tab generates a unique session ID stored in sessionStorage.
+ * When logged in, the tab writes { [tabSessionId]: true } into the
+ * shared localStorage key. The toast dismisses as soon as 2+ entries exist.
+ *
+ * This works even when both tabs are logged in as the same Google account,
+ * because we track *tabs*, not user IDs.
+ */
 const STORAGE_KEY = "e2eSyncAuthTabs";
+const POLL_MS = 600;
 
-function getTabId(): string {
+function getSessionTabId(): string {
   if (typeof window === "undefined") return "";
   try {
     let id = sessionStorage.getItem("e2eSyncTabId");
     if (!id) {
-      id = `tab_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
+      id = `t_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
       sessionStorage.setItem("e2eSyncTabId", id);
     }
     return id;
   } catch {
-    return `tab_${Date.now()}`;
+    return `t_${Date.now()}`;
   }
 }
 
 export function TwoTabLoginToast() {
   const { userId } = useBlobsContext();
-  const [otherTabsLoggedIn, setOtherTabsLoggedIn] = useState<Set<string>>(new Set());
-  const tabIdRef = useRef<string>("");
-  const channelRef = useRef<BroadcastChannel | null>(null);
+  const tabId = useRef<string>("");
+  const [readyTabCount, setReadyTabCount] = useState(0);
 
+  // Initialise tab ID once on mount
   useEffect(() => {
-    tabIdRef.current = getTabId();
-    let channel: BroadcastChannel;
-    try {
-      channel = new BroadcastChannel(CHANNEL_NAME);
-      channelRef.current = channel;
-    } catch {
-      channelRef.current = null;
-      return;
-    }
-
-    const handleMessage = (e: MessageEvent) => {
-      const data = e.data;
-      const myId = tabIdRef.current || getTabId();
-      if (data?.type === "auth" && data?.tabId && data?.userId && data.tabId !== myId) {
-        setOtherTabsLoggedIn((prev) => new Set(prev).add(data.tabId));
-      }
-    };
-    channel.addEventListener("message", handleMessage);
-
-    try {
-      const raw = localStorage.getItem(STORAGE_KEY);
-      const parsed = raw ? JSON.parse(raw) : {};
-      if (typeof parsed === "object" && parsed !== null) {
-        const ids = new Set<string>(Object.keys(parsed).filter((k) => parsed[k]));
-        setOtherTabsLoggedIn(ids);
-      }
-    } catch (_) {}
-
-    return () => {
-      channel.removeEventListener("message", handleMessage);
-      channel.close();
-      channelRef.current = null;
-    };
+    tabId.current = getSessionTabId();
   }, []);
 
+  // When this tab is logged in, stamp its ID into the shared map
   useEffect(() => {
-    if (!userId) return;
-    const tabId = tabIdRef.current || getTabId();
+    if (!userId || !tabId.current) return;
     try {
       const raw = localStorage.getItem(STORAGE_KEY);
-      const parsed = raw ? JSON.parse(raw) : {};
-      const next = { ...parsed, [tabId]: true };
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
-      channelRef.current?.postMessage({ type: "auth", tabId, userId });
+      const map: Record<string, boolean> = raw ? JSON.parse(raw) : {};
+      if (!map[tabId.current]) {
+        map[tabId.current] = true;
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(map));
+      }
     } catch (_) {}
   }, [userId]);
 
-  const atLeastTwoLoggedIn = userId ? otherTabsLoggedIn.size >= 1 : false;
-  const showToast = !atLeastTwoLoggedIn;
+  // Poll: count how many tabs have written their ID as logged-in
+  useEffect(() => {
+    const check = () => {
+      try {
+        const raw = localStorage.getItem(STORAGE_KEY);
+        const map: Record<string, boolean> = raw ? JSON.parse(raw) : {};
+        const count = Object.values(map).filter(Boolean).length;
+        setReadyTabCount(count);
+      } catch (_) {
+        setReadyTabCount(0);
+      }
+    };
+    check();
+    const id = setInterval(check, POLL_MS);
+    return () => clearInterval(id);
+  }, []);
 
-  if (!showToast) return null;
+  // Hide once this tab is logged in AND at least one other tab is also logged in
+  const bothReady = !!userId && readyTabCount >= 2;
+
+  if (bothReady) return null;
 
   return (
     <div
@@ -99,7 +93,9 @@ export function TwoTabLoginToast() {
         textAlign: "center",
       }}
     >
-      Log in to Google in both tabs to continue test.
+      {!userId
+        ? "Log in to Google in this tab to continue the test."
+        : "Waiting for the other tab to log in…"}
     </div>
   );
 }

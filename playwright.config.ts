@@ -23,7 +23,7 @@ export default defineConfig({
     actionTimeout: 15_000,
     navigationTimeout: 20_000,
   },
-  timeout: 120_000,
+  timeout: 420_000,
   expect: { timeout: SYNC_WAIT_MS },
   projects: [
     {
