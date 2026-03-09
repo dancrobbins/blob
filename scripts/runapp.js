@@ -7,6 +7,23 @@ const path = require("path");
 
 const root = path.join(__dirname, "..");
 const nextDir = path.join(root, ".next");
+const buildClaimPath = path.join(root, ".cursor", "build-claim.txt");
+
+function exitIfClaimInvalid() {
+  const claimId = process.env.BUILD_CLAIM_ID;
+  if (!claimId) return;
+  try {
+    const current = fs.readFileSync(buildClaimPath, "utf8").trim();
+    if (current !== claimId) {
+      console.log("Build claim invalidated by a newer run; exiting.");
+      process.exit(0);
+    }
+  } catch (_) {
+    // No file or unreadable: treat as invalid
+    console.log("Build claim missing or unreadable; exiting.");
+    process.exit(0);
+  }
+}
 
 function isPortInUse(port) {
   try {
@@ -46,6 +63,8 @@ function killPort(port) {
 }
 
 const PORT = 3000;
+exitIfClaimInvalid();
+
 const devAlreadyRunning = isPortInUse(PORT);
 
 if (devAlreadyRunning) {
@@ -56,6 +75,7 @@ if (devAlreadyRunning) {
     fs.rmSync(nextDir, { recursive: true, force: true });
   } catch (_) {}
   console.log("Building app...");
+  exitIfClaimInvalid();
   execSync("npm run build", { cwd: root, stdio: "inherit" });
   killPort(PORT);
   execSync(`node -e "setTimeout(()=>{},1200)"`, { cwd: root, stdio: "ignore", windowsHide: true });
@@ -77,6 +97,7 @@ if (devAlreadyRunning) {
     windowsHide: true,
   });
   console.log("Building app...");
+  exitIfClaimInvalid();
   execSync("npm run build", { cwd: root, stdio: "inherit" });
   const dev = spawn("npm", ["run", "dev"], {
     cwd: root,

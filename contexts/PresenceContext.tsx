@@ -15,7 +15,7 @@ import type { RealtimeChannel } from "@supabase/supabase-js";
 import { supabase } from "@/lib/supabase";
 
 const PRESENCE_STORAGE_KEY = "blob_presence_session_id";
-const CURSOR_THROTTLE_MS = 80;
+const CURSOR_THROTTLE_MS = 50;
 
 function getOrCreateSessionId(): string {
   if (typeof window === "undefined") return "";
@@ -67,9 +67,11 @@ export function PresenceProvider({ children }: { children: ReactNode }) {
     lastPayloadRef.current = next;
 
     if (throttleRef.current) return;
+    ch.track(next);
     throttleRef.current = setTimeout(() => {
       throttleRef.current = null;
-      ch.track(next);
+      const latest = lastPayloadRef.current;
+      if (latest) ch.track(latest);
     }, CURSOR_THROTTLE_MS);
   }, []);
 
@@ -98,46 +100,50 @@ export function PresenceProvider({ children }: { children: ReactNode }) {
     const channel = client.channel(channelName);
     channelRef.current = channel;
 
-    channel
-      .on("presence", { event: "sync" }, () => {
-        const state = channel.presenceState();
-        const list: OtherPresence[] = [];
-        for (const key of Object.keys(state)) {
-          const joins = state[key] as Array<Record<string, unknown>>;
-          if (!Array.isArray(joins)) continue;
-          for (const p of joins) {
-            const sid = p.sessionId as string | undefined;
-            if (sid === sessionId) continue;
-            const uid = (p.userId as string) ?? "";
-            const name = (p.displayName as string) ?? "Guest";
-            const avatar = (p.avatarUrl as string) ?? null;
-            const wx = typeof p.worldX === "number" ? p.worldX : 0;
-            const wy = typeof p.worldY === "number" ? p.worldY : 0;
-            list.push({
-              sessionId: sid ?? "",
-              userId: uid,
-              displayName: name,
-              avatarUrl: avatar,
-              worldX: wx,
-              worldY: wy,
-              displayLabel: name,
-            });
-          }
-        }
-        const byUser = new Map<string, typeof list>();
-        for (const p of list) {
-          const arr = byUser.get(p.userId) ?? [];
-          arr.push(p);
-          byUser.set(p.userId, arr);
-        }
-        for (const [, arr] of byUser) {
-          arr.sort((a, b) => a.sessionId.localeCompare(b.sessionId));
-          arr.forEach((p, i) => {
-            p.displayLabel = arr.length > 1 ? `${p.displayName} ${i + 1}` : p.displayName;
+    function refreshPresencesFromState() {
+      const state = channel.presenceState();
+      const list: OtherPresence[] = [];
+      for (const key of Object.keys(state)) {
+        const joins = state[key] as Array<Record<string, unknown>>;
+        if (!Array.isArray(joins)) continue;
+        for (const p of joins) {
+          const sid = p.sessionId as string | undefined;
+          if (sid === sessionId) continue;
+          const uid = (p.userId as string) ?? "";
+          const name = (p.displayName as string) ?? "Guest";
+          const avatar = (p.avatarUrl as string) ?? null;
+          const wx = typeof p.worldX === "number" ? p.worldX : 0;
+          const wy = typeof p.worldY === "number" ? p.worldY : 0;
+          list.push({
+            sessionId: sid ?? "",
+            userId: uid,
+            displayName: name,
+            avatarUrl: avatar,
+            worldX: wx,
+            worldY: wy,
+            displayLabel: name,
           });
         }
-        setOtherPresences([...list]);
-      })
+      }
+      const byUser = new Map<string, typeof list>();
+      for (const p of list) {
+        const arr = byUser.get(p.userId) ?? [];
+        arr.push(p);
+        byUser.set(p.userId, arr);
+      }
+      for (const [, arr] of byUser) {
+        arr.sort((a, b) => a.sessionId.localeCompare(b.sessionId));
+        arr.forEach((p, i) => {
+          p.displayLabel = arr.length > 1 ? `${p.displayName} ${i + 1}` : p.displayName;
+        });
+      }
+      setOtherPresences([...list]);
+    }
+
+    channel
+      .on("presence", { event: "sync" }, refreshPresencesFromState)
+      .on("presence", { event: "join" }, refreshPresencesFromState)
+      .on("presence", { event: "leave" }, refreshPresencesFromState)
       .subscribe(async (status) => {
         if (status === "SUBSCRIBED") {
           client.auth.getSession().then(({ data: { session } }) => {

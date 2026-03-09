@@ -7,6 +7,22 @@ const path = require("path");
 
 const root = path.join(__dirname, "..");
 const nextDir = path.join(root, ".next");
+const buildClaimPath = path.join(root, ".cursor", "build-claim.txt");
+
+function exitIfClaimInvalid() {
+  const claimId = process.env.BUILD_CLAIM_ID;
+  if (!claimId) return;
+  try {
+    const current = fs.readFileSync(buildClaimPath, "utf8").trim();
+    if (current !== claimId) {
+      console.log("Build claim invalidated by a newer run; exiting.");
+      process.exit(0);
+    }
+  } catch (_) {
+    console.log("Build claim missing or unreadable; exiting.");
+    process.exit(0);
+  }
+}
 
 function killPort(port) {
   try {
@@ -36,12 +52,15 @@ function killPort(port) {
   }
 }
 
+exitIfClaimInvalid();
+
 console.log("Stopping dev server (ports 3000, 3001)...");
 killPort(3000);
 killPort(3001);
 
 try { fs.rmSync(nextDir, { recursive: true, force: true }); } catch (_) {}
 console.log("Building app...");
+exitIfClaimInvalid();
 execSync("npm run build", { cwd: root, stdio: "inherit" });
 
 console.log("Starting dev server...");

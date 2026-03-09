@@ -1,5 +1,20 @@
 # Changelog
 
+## 2026-03-09 (merge and overlay only when merge bounds touch)
+- Blobs merge on release only when their merge-cue rects (padded blob bounds) touch or overlap, not when merely within 12px. The overlay fused outline and the top/bottom insertion bar now appear only when merge is possible (cue rects touch or overlap).
+
+## 2026-03-09 (pointer from avatar to cursor tip)
+- Other users' (and multiple tabs') cursors now show a pointer line and arrowhead whose tip is at the actual cursor position; the avatar bubble sits directly below and to the right of the pointer base. On mobile, the pointer is shown at the last touch or hover location (already sent via pointer events).
+
+## 2026-03-09 (no new blob when tapping empty canvas with insertion point)
+- Tap on empty canvas no longer creates a new blob when a blob already has the text insertion point (cursor). Fix: track which blob has focus via onFocus/onBlur and also check document.activeElement at pointer down so clicking into a blob then clicking empty canvas does not create a new blob.
+
+## 2026-03-09 (near real-time pointer/cursor updates)
+- Other users' and multiple tabs' cursors now update in near real time. Throttle reduced from 80ms to 50ms; the first cursor move is sent immediately instead of waiting for the throttle window; the throttle timeout now sends the latest position so the final position is not lost. Presence join and leave events also refresh cursor state so pointer positions stay in sync.
+
+## 2026-03-09 (Undo/Redo tooltips)
+- Hovering over the Undo or Redo menu items shows a tooltip with a short description of the action that will be undone or redone (e.g. "Undo: Merge blobs", "Redo: Add blob").
+
 ## 2026-03-09 (selection bounds from DOM)
 - Selection bounds were previously computed from blob store data (x, y, width, height), which could be out of sync with rendered positions or include corrupted/outlier values and produce an oversized or wrong dashed rectangle. They are now computed from the DOM: each selected blob card's on-screen rect is read and converted to world coordinates, then unioned. The selection rectangle now matches the visible blob shapes and still moves with pan/scale.
 

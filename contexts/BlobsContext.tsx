@@ -23,6 +23,7 @@ import {
   getLastPushTime,
   setLastPushTime,
   mergeLocalAndCloudBlobs,
+  mergeDeletedIds,
   blobsEqual,
   debouncedSaveToCloud,
   upsertUserBlobs,
@@ -48,6 +49,10 @@ type BlobsContextValue = {
   redo: () => void;
   canUndo: boolean;
   canRedo: boolean;
+  /** Short description of what the next undo would revert (e.g. "Merge blobs"). Empty when canUndo is false. */
+  undoLabel: string;
+  /** Short description of what the next redo would repeat (e.g. "Add blob"). Empty when canRedo is false. */
+  redoLabel: string;
   /** Push current blob state to undo stack (e.g. before word-boundary typing). Clears redo. */
   pushUndoSnapshot: () => void;
   preferences: Preferences;
@@ -104,6 +109,49 @@ const UNDOABLE_ACTIONS = new Set<BlobsAction["type"]>([
   "SET_BLOB_SIZE",
 ]);
 
+/**
+ * Describe the transition from `fromState` to `toState` in one short phrase (e.g. "Merge blobs").
+ * Used for Undo tooltip: describeAction(undoStackTop, current) = what we're undoing.
+ * Used for Redo tooltip: describeAction(current, redoStackTop) = what we're redoing.
+ */
+function describeBlobStateChange(fromState: Blob[], toState: Blob[]): string {
+  if (toState.length > fromState.length) {
+    const added = toState.length - fromState.length;
+    return added === 1 ? "Add blob" : `Add ${added} blobs`;
+  }
+  if (toState.length < fromState.length) {
+    const removed = fromState.length - toState.length;
+    if (removed === 1 && fromState.length >= 2 && toState.length >= 1) return "Merge blobs";
+    return removed === 1 ? "Delete blob" : `Delete ${removed} blobs`;
+  }
+  const positionChanged = fromState.some((f) => {
+    const t = toState.find((b) => b.id === f.id);
+    return t && (t.x !== f.x || t.y !== f.y);
+  });
+  if (positionChanged) return "Move blob";
+  const contentChanged = fromState.some((f) => {
+    const t = toState.find((b) => b.id === f.id);
+    return t && (t.content ?? "") !== (f.content ?? "");
+  });
+  if (contentChanged) return "Edit blob";
+  const sizeChanged = fromState.some((f) => {
+    const t = toState.find((b) => b.id === f.id);
+    return t && (t.width !== f.width || t.height !== f.height);
+  });
+  if (sizeChanged) return "Resize blob";
+  const lockedChanged = fromState.some((f) => {
+    const t = toState.find((b) => b.id === f.id);
+    return t && t.locked !== f.locked;
+  });
+  if (lockedChanged) return "Lock blob";
+  const hiddenChanged = fromState.some((f) => {
+    const t = toState.find((b) => b.id === f.id);
+    return t && t.hidden !== f.hidden;
+  });
+  if (hiddenChanged) return "Hide blob";
+  return "Change";
+}
+
 export function BlobsProvider({ children }: { children: ReactNode }) {
   const [blobs, dispatchReducer] = useReducer(blobsReducer, []);
   const [preferences, setPreferencesState] = React.useState<Preferences>(() =>
@@ -126,6 +174,7 @@ export function BlobsProvider({ children }: { children: ReactNode }) {
   const blobsRef = React.useRef<Blob[]>(blobs);
   const syncingRef = React.useRef(false);
   const prevUserIdRef = React.useRef<string | null>(null);
+  const deletedIdsRef = React.useRef<Record<string, string>>({});
   const [blobbyLog, setBlobbyLog] = React.useState("");
   const blobbyLogRef = React.useRef(blobbyLog);
   blobbyLogRef.current = blobbyLog;
@@ -175,6 +224,17 @@ export function BlobsProvider({ children }: { children: ReactNode }) {
         setRedoStack([]);
       }
       lastActionTypeForUndoRef.current = action.type;
+    }
+    // Record tombstones for any blob deletion so remote browsers can't resurrect them.
+    const now = new Date().toISOString();
+    if (action.type === "DELETE_BLOB") {
+      deletedIdsRef.current = { ...deletedIdsRef.current, [action.payload]: now };
+    } else if (action.type === "DELETE_BLOBS") {
+      const additions: Record<string, string> = {};
+      for (const id of action.payload) additions[id] = now;
+      deletedIdsRef.current = { ...deletedIdsRef.current, ...additions };
+    } else if (action.type === "MERGE_BLOBS") {
+      deletedIdsRef.current = { ...deletedIdsRef.current, [action.payload.sourceId]: now };
     }
     if (MAJOR_ACTIONS.has(action.type)) lastActionRef.current = "major";
     else if (action.type === POSITION_ACTION) lastActionRef.current = "position";
@@ -279,6 +339,10 @@ export function BlobsProvider({ children }: { children: ReactNode }) {
           lastFetchedCameraRef.current = { camera: cloud.camera, updatedAt: cloud.camera.updatedAt ?? null };
           setInitialCameraPosition(cloud.camera);
         }
+        // Seed tombstones from cloud so we don't resurrect remotely-deleted blobs
+        if (cloud?.deletedIds) {
+          deletedIdsRef.current = mergeDeletedIds(deletedIdsRef.current, cloud.deletedIds);
+        }
 
         let pullIntoCloud = true;
         if (current.length > 0) {
@@ -298,16 +362,16 @@ export function BlobsProvider({ children }: { children: ReactNode }) {
 
         if (!cloud) {
           console.log("[blob sync] no cloud data, pushing local to cloud");
-          await upsertUserBlobs(userId, current, mergedPrefs, blobbyLogRef.current, getCameraToWrite());
+          await upsertUserBlobs(userId, current, mergedPrefs, blobbyLogRef.current, getCameraToWrite(), deletedIdsRef.current);
           if (!getMergedFlag(userId, true)) setMergedFlag(userId, true);
           return;
         }
 
-        const mergedBlobs = mergeLocalAndCloudBlobs(current, cloud.blobs);
+        const mergedBlobs = mergeLocalAndCloudBlobs(current, cloud.blobs, deletedIdsRef.current);
         console.log("[blob sync] merged blobs:", mergedBlobs.length);
         dispatch({ type: "SET_BLOBS", payload: mergedBlobs });
         setMergedFlag(userId, true);
-        await upsertUserBlobs(userId, mergedBlobs, mergedPrefs, cloud.blobbyLog ?? blobbyLogRef.current, getCameraToWrite());
+        await upsertUserBlobs(userId, mergedBlobs, mergedPrefs, cloud.blobbyLog ?? blobbyLogRef.current, getCameraToWrite(), deletedIdsRef.current);
       } finally {
         syncingRef.current = false;
         clearAllLocalBlobData();
@@ -334,6 +398,7 @@ export function BlobsProvider({ children }: { children: ReactNode }) {
       setRedoStack([]);
       setBlobbyLog("");
       saveBlobsToStorage([]);
+      deletedIdsRef.current = {};
       if (prevUserId) clearMergedFlag(prevUserId);
     }
     prevUserIdRef.current = userId;
@@ -359,7 +424,7 @@ export function BlobsProvider({ children }: { children: ReactNode }) {
     if (action === "major") {
       clearSaveTimeout();
       lastActionRef.current = null;
-      upsertUserBlobs(userId, blobs, preferences, blobbyLogRef.current, camera);
+      upsertUserBlobs(userId, blobs, preferences, blobbyLogRef.current, camera, deletedIdsRef.current);
       return; // skip debounced save this run
     }
     if (action === "position") {
@@ -368,11 +433,11 @@ export function BlobsProvider({ children }: { children: ReactNode }) {
         positionSaveTimeoutRef.current = null;
         lastActionRef.current = null;
         clearSaveTimeout();
-        upsertUserBlobs(userId, blobsRef.current, preferences, blobbyLogRef.current, getCameraToWrite());
+        upsertUserBlobs(userId, blobsRef.current, preferences, blobbyLogRef.current, getCameraToWrite(), deletedIdsRef.current);
       }, POSITION_SAVE_DEBOUNCE_MS);
     }
 
-    debouncedSaveToCloud(userId, blobs, preferences, blobbyLogRef.current, camera);
+    debouncedSaveToCloud(userId, blobs, preferences, blobbyLogRef.current, camera, deletedIdsRef.current);
   }, [blobs, userId, preferences, isLoading, getCameraToWrite]);
 
   // Poll cloud when logged in: first poll soon, then on a cadence; also poll when tab/window becomes visible (sync when user switches to this tab)
@@ -382,8 +447,12 @@ export function BlobsProvider({ children }: { children: ReactNode }) {
     const poll = async () => {
       const cloud = await fetchUserBlobs(userId);
       if (!cloud) return;
+      // Merge any tombstones from the cloud into our local set so we can apply them on the next write
+      if (cloud.deletedIds && Object.keys(cloud.deletedIds).length > 0) {
+        deletedIdsRef.current = mergeDeletedIds(deletedIdsRef.current, cloud.deletedIds);
+      }
       const latestLocal = blobsRef.current;
-      let merged = mergeLocalAndCloudBlobs(latestLocal, cloud.blobs);
+      let merged = mergeLocalAndCloudBlobs(latestLocal, cloud.blobs, deletedIdsRef.current);
       // When cloud is ahead of our last push, apply remote deletions: drop any blob not in cloud.
       const lastPush = getLastPushTime(userId, true);
       if (
@@ -441,7 +510,7 @@ export function BlobsProvider({ children }: { children: ReactNode }) {
       const newLog = appendBlobbyLogPersistence(userId, text, currentLog);
       setBlobbyLog(newLog);
       if (userId) {
-        upsertUserBlobs(userId, blobsRef.current, preferences, newLog, getCameraToWrite());
+        upsertUserBlobs(userId, blobsRef.current, preferences, newLog, getCameraToWrite(), deletedIdsRef.current);
       }
     },
     [userId, preferences, getCameraToWrite]
@@ -455,14 +524,23 @@ export function BlobsProvider({ children }: { children: ReactNode }) {
       if (!userId) return;
       if (options?.immediate) {
         clearSaveTimeout();
-        upsertUserBlobs(userId, blobsRef.current, preferences, blobbyLogRef.current, withTimestamp);
+        upsertUserBlobs(userId, blobsRef.current, preferences, blobbyLogRef.current, withTimestamp, deletedIdsRef.current);
         lastFetchedCameraRef.current = { camera: withTimestamp, updatedAt: withTimestamp.updatedAt ?? null };
       } else {
-        debouncedSaveToCloud(userId, blobsRef.current, preferences, blobbyLogRef.current, withTimestamp);
+        debouncedSaveToCloud(userId, blobsRef.current, preferences, blobbyLogRef.current, withTimestamp, deletedIdsRef.current);
       }
     },
     [userId, preferences]
   );
+
+  const undoLabel =
+    undoStack.length > 0
+      ? describeBlobStateChange(undoStack[undoStack.length - 1], blobs)
+      : "";
+  const redoLabel =
+    redoStack.length > 0
+      ? describeBlobStateChange(blobs, redoStack[redoStack.length - 1])
+      : "";
 
   const value: BlobsContextValue = {
     blobs,
@@ -471,6 +549,8 @@ export function BlobsProvider({ children }: { children: ReactNode }) {
     redo,
     canUndo: undoStack.length > 0,
     canRedo: redoStack.length > 0,
+    undoLabel,
+    redoLabel,
     pushUndoSnapshot,
     preferences,
     setPreferences,

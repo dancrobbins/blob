@@ -38,6 +38,8 @@ type BlobbyWordBoxProps = {
   onLeaveAfterAction?: () => void;
   /** When true, show the "..." button even without hovering (e.g. when output was recalled by long-hover on Blobby). */
   showOptionsWithoutHover?: boolean;
+  /** Called when the "..." popup menu opens or closes so the parent can keep the chat visible while the menu is open. */
+  onMenuOpenChange?: (open: boolean) => void;
 };
 
 export function BlobbyWordBox({
@@ -46,6 +48,7 @@ export function BlobbyWordBox({
   onMouseOverChange,
   onLeaveAfterAction,
   showOptionsWithoutHover = false,
+  onMenuOpenChange,
 }: BlobbyWordBoxProps) {
   const [visible, setVisible] = useState(false);
   const [displayedText, setDisplayedText] = useState("");
@@ -152,6 +155,12 @@ export function BlobbyWordBox({
     }, FADE_OUT_DURATION_MS);
     return () => clearTimeout(t);
   }, [phase]);
+
+  // Notify parent when menu opens/closes so recalled chat stays visible while the menu is open
+  useEffect(() => {
+    onMenuOpenChange?.(menuOpen);
+    return () => onMenuOpenChange?.(false);
+  }, [menuOpen, onMenuOpenChange]);
 
   // Close menu when clicking outside the ellipsis wrapper
   useEffect(() => {

@@ -7,21 +7,35 @@
 }
 
 .cursor {
+  position: relative;
+  width: 0;
+  height: 0;
+  overflow: visible;
+}
+
+.pointerSvg {
+  position: fixed;
+  overflow: visible;
+  pointer-events: none;
+  color: var(--fg);
+}
+
+.pointerLine {
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+}
+
+.pointerHead {
+  fill: currentColor;
+}
+
+.avatarWrap {
   position: fixed;
   display: flex;
   align-items: center;
   gap: 6px;
-  transform: translate(2px, 2px);
   white-space: nowrap;
-}
-
-.pointer {
-  width: 0;
-  height: 0;
-  border-left: 6px solid currentColor;
-  border-top: 4px solid transparent;
-  border-bottom: 4px solid transparent;
-  flex-shrink: 0;
 }
 
 .avatar {

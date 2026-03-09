@@ -7,6 +7,17 @@ alwaysApply: true
 
 When the user says **runapp**, **runall**, **reloadapp**, **rerunapp**, **restartall**, or **killAll**, do the following. **runall**, **reloadapp**, and **rerunapp** are aliases for **runapp**. The same rebuild-and-refresh procedure (run runapp script, then browser_tabs, then browser_navigate to open or refresh the app tab) is **mandatory after every feature and bug fix** — see the rule "post-feature-rebuild-and-refresh".
 
+## Build claim (multiple agents)
+
+When **multiple agents** may run runapp or restartall around the same time, only the **most recent** attempt should complete; earlier attempts should stop so they don't overwrite the build. Before running runapp or restartall:
+
+1. **Claim the build:** Generate a unique build claim ID (e.g. `Date.now()` or a short random string). Write that ID to the file `.cursor/build-claim.txt` in the project root (create `.cursor` if needed). This makes this agent the "current" claimant.
+2. **Run with the claim:** Invoke the script with that ID in the environment: `BUILD_CLAIM_ID=<your-id> npm run runapp` or `BUILD_CLAIM_ID=<your-id> npm run restartall`.
+
+The runapp and restartall scripts read `.cursor/build-claim.txt` at start and again before running `npm run build`. If the file's value is not equal to `BUILD_CLAIM_ID`, the script exits without building (another agent claimed the build; this run is invalidated). The most recent agent to write the file wins; others see a mismatch and exit.
+
+**killAll** does not use the build claim; run it as usual.
+
 ## Canonical port
 
 **The app always runs on `http://localhost:3000`.** After runapp or restartall, ensure a Cursor Browser tab shows the app: if a tab already has a URL containing `localhost:3000`, repurpose it by navigating that tab to `http://localhost:3000?_=<timestamp>`. Only if no such tab exists, open a new tab (`browser_navigate` with `newTab: true`). Never use 3001 or any other port.
@@ -23,7 +34,7 @@ The script:
 
 **Do not reuse or navigate to port 3001, 3002, or 3003.**
 
-1. Run `npm run runapp`, `npm run runall`, `npm run reloadapp`, or `npm run rerunapp`.
+1. **Claim the build** (see "Build claim" above): write a unique ID to `.cursor/build-claim.txt`, then run `BUILD_CLAIM_ID=<that-id> npm run runapp` (or runall/reloadapp/rerunapp).
 2. Wait 4–6 s for the dev server to be ready (if the script started a new one, it needs a moment; if one was already running, the wait is harmless).
 3. **Open or refresh Cursor Browser on port 3000:** Call `browser_tabs` with `action: "list"`. If a tab already has a URL containing `localhost:3000`, repurpose it: call `browser_navigate` with `http://localhost:3000?_=<timestamp>` and that tab's `viewId` (no newTab) to refresh. Only if no tab has the app URL, call `browser_navigate` with the same URL and `newTab: true` to open a new tab. Use a new timestamp in the query param each time.
 
@@ -31,7 +42,7 @@ The script:
 
 **Always** kills dev servers on 3000/3001, rebuilds, and starts fresh on 3000. Use when you want a full restart (e.g. after asset issues or to guarantee a clean server).
 
-1. Run `npm run restartall` (kills all dev servers on 3000/3001/3002/3003, rebuilds, starts fresh on 3000).
+1. **Claim the build** (see "Build claim" above): write a unique ID to `.cursor/build-claim.txt`, then run `BUILD_CLAIM_ID=<that-id> npm run restartall`.
 2. Wait 4–6 s for the server to be ready.
 3. **Open or refresh Cursor Browser:** Same as runapp — call `browser_tabs` (list); if a tab already has `localhost:3000`, navigate that tab to `http://localhost:3000?_=<timestamp>` (repurpose it). Only if no such tab exists, call `browser_navigate` with `newTab: true`.
 

@@ -377,6 +377,7 @@ export function BlobCard({
   onUpdateContent,
   onPosition,
   onFocus,
+  onBlur: onBlurProp,
   onDuplicate,
   onDelete,
   onHide,
@@ -399,6 +400,7 @@ export function BlobCard({
   onUpdateContent?: (content: string) => void;
   onPosition: (x: number, y: number) => void;
   onFocus: () => void;
+  onBlur?: () => void;
   onDuplicate: () => void;
   onDelete: () => void;
   onHide?: () => void;
@@ -1106,7 +1108,8 @@ export function BlobCard({
       buildContentFromLines(el, lines);
     }
     dispatchLines(lines);
-  }, [blob.locked, dispatchLines]);
+    onBlurProp?.();
+  }, [blob.locked, dispatchLines, onBlurProp]);
 
   const handlePaste = useCallback(
     (e: React.ClipboardEvent) => {

@@ -1,8 +1,8 @@
 {
-  "buildNumber": 237,
-  "buildTime": "2026-03-09T22:06:04.905Z",
+  "buildNumber": 246,
+  "buildTime": "2026-03-09T22:51:02.913Z",
   "version": "1.0.0",
   "updates": [
-    "Press-and-drag on the canvas (to draw a selection rectangle) no longer deselects blobs; selection updates when you release."
+    "Merge only when merge-cue bounds touch or overlap; overlay fused outline and top/bottom insertion bar show only in that case."
   ]
 }

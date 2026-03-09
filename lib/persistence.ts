@@ -183,6 +183,7 @@ export async function fetchUserBlobs(userId: string): Promise<{
   blobbyLog: string;
   camera: CameraPosition | null;
   updatedAt: string | null;
+  deletedIds: Record<string, string>;
 } | null> {
   if (!supabase) return null;
   const { data, error } = await supabase
@@ -200,6 +201,7 @@ export async function fetchUserBlobs(userId: string): Promise<{
     preferences?: Partial<Preferences>;
     blobbyLog?: string;
     camera?: { panX?: number; panY?: number; scale?: number; updatedAt?: string };
+    deletedIds?: Record<string, string>;
   } | null;
   const blobs = Array.isArray(dataObj?.notes) ? dataObj.notes : [];
   const preferences = dataObj?.preferences ?? null;
@@ -217,12 +219,17 @@ export async function fetchUserBlobs(userId: string): Promise<{
           updatedAt: typeof raw.updatedAt === "string" ? raw.updatedAt : undefined,
         }
       : null;
+  const deletedIds: Record<string, string> =
+    dataObj?.deletedIds != null && typeof dataObj.deletedIds === "object" && !Array.isArray(dataObj.deletedIds)
+      ? (dataObj.deletedIds as Record<string, string>)
+      : {};
   return {
     blobs,
     preferences: preferences && (preferences.theme != null || preferences.blobbyColor != null) ? preferences : null,
     blobbyLog,
     camera,
     updatedAt: data.updated_at ?? null,
+    deletedIds,
   };
 }
 
@@ -231,10 +238,12 @@ export async function upsertUserBlobs(
   blobs: Blob[],
   preferences?: Partial<Preferences>,
   blobbyLog?: string,
-  camera?: CameraPosition
+  camera?: CameraPosition,
+  deletedIds?: Record<string, string>
 ): Promise<boolean> {
   if (!supabase) return false;
   const now = new Date().toISOString();
+  const prunedDeletedIds = deletedIds ? pruneDeletedIds(deletedIds) : undefined;
   const { error } = await supabase.from("user_notes").upsert(
     {
       user_id: userId,
@@ -243,6 +252,7 @@ export async function upsertUserBlobs(
         preferences: preferences ?? undefined,
         blobbyLog: blobbyLog ?? undefined,
         camera: camera ?? undefined,
+        deletedIds: prunedDeletedIds ?? undefined,
       },
       updated_at: now,
     },
@@ -262,13 +272,43 @@ function blobsEqual(a: Blob[], b: Blob[]): boolean {
   return JSON.stringify(sortById(a)) === JSON.stringify(sortById(b));
 }
 
-function mergeBlobs(local: Blob[], cloud: Blob[]): Blob[] {
+/** Remove tombstone entries older than maxAgeDays (default 30) to prevent unbounded growth. */
+export function pruneDeletedIds(deletedIds: Record<string, string>, maxAgeDays = 30): Record<string, string> {
+  const cutoff = Date.now() - maxAgeDays * 24 * 60 * 60 * 1000;
+  return Object.fromEntries(
+    Object.entries(deletedIds).filter(([, deletedAt]) => new Date(deletedAt).getTime() > cutoff)
+  );
+}
+
+/** Merge two deletedIds maps, keeping the newer timestamp for each ID. */
+export function mergeDeletedIds(
+  a: Record<string, string>,
+  b: Record<string, string>
+): Record<string, string> {
+  const result = { ...a };
+  for (const [id, ts] of Object.entries(b)) {
+    if (!result[id] || new Date(ts) > new Date(result[id])) {
+      result[id] = ts;
+    }
+  }
+  return result;
+}
+
+function mergeBlobs(local: Blob[], cloud: Blob[], deletedIds: Record<string, string> = {}): Blob[] {
   const byId = new Map<string, Blob>();
   for (const b of local) byId.set(b.id, b);
   for (const b of cloud) {
     const existing = byId.get(b.id);
     if (!existing || new Date(b.updatedAt) > new Date(existing.updatedAt)) {
       byId.set(b.id, b);
+    }
+  }
+  // Apply tombstones: remove any blob whose deletion timestamp is >= the blob's last updatedAt.
+  // If a blob was re-created after deletion (same ID, newer updatedAt) it survives.
+  for (const [id, deletedAt] of Object.entries(deletedIds)) {
+    const blob = byId.get(id);
+    if (blob && new Date(deletedAt) >= new Date(blob.updatedAt)) {
+      byId.delete(id);
     }
   }
   return Array.from(byId.values()).sort(
@@ -278,9 +318,10 @@ function mergeBlobs(local: Blob[], cloud: Blob[]): Blob[] {
 
 export function mergeLocalAndCloudBlobs(
   local: Blob[],
-  cloud: Blob[]
+  cloud: Blob[],
+  deletedIds: Record<string, string> = {}
 ): Blob[] {
-  return mergeBlobs(local, cloud);
+  return mergeBlobs(local, cloud, deletedIds);
 }
 
 export { blobsEqual };
@@ -290,12 +331,13 @@ export function debouncedSaveToCloud(
   blobs: Blob[],
   preferences: Partial<Preferences>,
   blobbyLog?: string,
-  camera?: CameraPosition
+  camera?: CameraPosition,
+  deletedIds?: Record<string, string>
 ): void {
   if (saveTimeout) clearTimeout(saveTimeout);
   saveTimeout = setTimeout(async () => {
     saveTimeout = null;
-    const ok = await upsertUserBlobs(userId, blobs, preferences, blobbyLog, camera);
+    const ok = await upsertUserBlobs(userId, blobs, preferences, blobbyLog, camera, deletedIds);
     if (!ok) console.error("[blob sync] debouncedSaveToCloud: upsert failed");
   }, DEBOUNCE_MS);
 }

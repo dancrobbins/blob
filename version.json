@@ -1,6 +1,6 @@
 {
   "version": "1.0.0",
   "updates": [
-    "Selection bounds are now computed from the DOM (rendered blob positions) and converted to world coords, fixing incorrect or oversized selection rectangles."
+    "Merge only when merge-cue bounds touch or overlap; overlay fused outline and top/bottom insertion bar show only in that case."
   ]
 }

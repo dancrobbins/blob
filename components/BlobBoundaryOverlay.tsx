@@ -34,8 +34,9 @@ export function BlobBoundaryOverlay({
   const cueA = getMergeCueRect(rectA, MERGE_CUE_PADDING);
   const cueB = getMergeCueRect(rectB, MERGE_CUE_PADDING);
   const cueGap = gapBetweenRects(cueA, cueB);
-  const FUSE_THRESHOLD = 12;
-  const fused = cueGap < FUSE_THRESHOLD;
+  // Fused outline and top/bottom insertion bar only when merge bounds touch or overlap.
+  const mergePossible = cueGap <= 0;
+  const fused = mergePossible;
 
   const margin = 4;
   let left: number;
@@ -75,11 +76,11 @@ export function BlobBoundaryOverlay({
   let insertionBarY: number | null = null;
   let insertionBarLeft = rectB.left;
   let insertionBarWidth = rectB.width;
-  if (insertAtTop === true) {
+  if (mergePossible && insertAtTop === true) {
     insertionBarY = v != null ? Math.max(rectB.top, viewportTop) : rectB.top;
     insertionBarLeft = v != null ? Math.max(rectB.left, viewportLeft) : rectB.left;
     insertionBarWidth = v != null ? Math.min(rectB.left + rectB.width, viewportRight) - insertionBarLeft : rectB.width;
-  } else if (insertAtTop === false) {
+  } else if (mergePossible && insertAtTop === false) {
     const naturalY = rectB.top + rectB.height - INSERTION_BAR_HEIGHT;
     insertionBarY = v != null ? Math.min(naturalY, viewportBottom - INSERTION_BAR_HEIGHT) : naturalY;
     insertionBarLeft = v != null ? Math.max(rectB.left, viewportLeft) : rectB.left;

@@ -39,7 +39,7 @@ export function Header({
   /** Enable "Zoom to selection" when one or more blobs are selected. */
   canZoomToSelection?: boolean;
 }) {
-  const { preferences, setPreferences, userId, incrementMenuOpen, decrementMenuOpen, undo, redo, canUndo, canRedo } = useBlobsContext();
+  const { preferences, setPreferences, userId, incrementMenuOpen, decrementMenuOpen, undo, redo, canUndo, canRedo, undoLabel, redoLabel } = useBlobsContext();
   const [menuOpen, setMenuOpen] = useState(false);
   const [accountOpen, setAccountOpen] = useState(false);
   const prevAnyOpenRef = useRef(false);
@@ -265,7 +265,8 @@ export function Header({
                     undo();
                     setMenuOpen(false);
                   }}
-                  aria-label="Undo"
+                  aria-label={canUndo ? `Undo: ${undoLabel}` : "Undo"}
+                  title={canUndo ? `Undo: ${undoLabel}` : undefined}
                 >
                   <span className={styles.menuActionWithIcon}>
                     <svg className={styles.menuActionIcon} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
@@ -283,7 +284,8 @@ export function Header({
                     redo();
                     setMenuOpen(false);
                   }}
-                  aria-label="Redo"
+                  aria-label={canRedo ? `Redo: ${redoLabel}` : "Redo"}
+                  title={canRedo ? `Redo: ${redoLabel}` : undefined}
                 >
                   <span className={styles.menuActionWithIcon}>
                     <svg className={styles.menuActionIcon} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>

@@ -161,6 +161,8 @@ export default function Home() {
   /** Single-blob drag start position for undo merge (restore source blob here). */
   const mergeDragStartPositionRef = useRef<{ blobId: string; x: number; y: number } | null>(null);
   const hadSelectionAtPointerDownRef = useRef(false);
+  /** True if a blob had the text insertion point at pointer down; tap on empty canvas then does not create a new blob. */
+  const hadFocusBlobAtPointerDownRef = useRef(false);
   /** True once we've committed to either pan or selection for this gesture. */
   const gestureChosenRef = useRef(false);
   const activePointersRef = useRef<Map<number, { clientX: number; clientY: number }>>(new Map());
@@ -185,6 +187,7 @@ export default function Home() {
   const [lastBlobbyOutput, setLastBlobbyOutput] = useState<string | null>(null);
   const [showRecalledOutput, setShowRecalledOutput] = useState(false);
   const [backerHovered, setBackerHovered] = useState(false);
+  const [isBlobbyMenuOpen, setIsBlobbyMenuOpen] = useState(false);
   const blobbyLongHoverTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const backerLeaveGraceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const recallHideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -245,13 +248,14 @@ export default function Home() {
   }, [pan.x, pan.y, scale, initialCameraPosition, persistCamera]);
 
   // Merge cues and merge target only consider visible (non-hidden) blobs.
-  const { closeTargetId, veryCloseTargetId, fuseTargetId, mergeGap, mergeBoundsA, mergeBoundsB } = React.useMemo(() => {
+  // mergePossible: true only when merge-cue rects (padded blob bounds) touch or overlap.
+  const { closeTargetId, veryCloseTargetId, mergePossible, mergeGap, mergeBoundsA, mergeBoundsB } = React.useMemo(() => {
     if (!draggingBlobId || visibleBlobs.length < 2) {
-      return { closeTargetId: null, veryCloseTargetId: null, mergeGap: Infinity, mergeBoundsA: null, mergeBoundsB: null };
+      return { closeTargetId: null, veryCloseTargetId: null, mergePossible: false, mergeGap: Infinity, mergeBoundsA: null, mergeBoundsB: null };
     }
     const draggingBlob = visibleBlobs.find((b) => b.id === draggingBlobId);
     if (!draggingBlob) {
-      return { closeTargetId: null, veryCloseTargetId: null, mergeGap: Infinity, mergeBoundsA: null, mergeBoundsB: null };
+      return { closeTargetId: null, veryCloseTargetId: null, mergePossible: false, mergeGap: Infinity, mergeBoundsA: null, mergeBoundsB: null };
     }
     const boundsA = getBlobBounds(draggingBlob);
     let bestId: string | null = null;
@@ -268,21 +272,14 @@ export default function Home() {
     const closeTargetId = bestId != null && bestGap < CLOSE_THRESHOLD ? bestId : null;
     const veryCloseTargetId = bestId != null && bestGap < VERY_CLOSE_THRESHOLD ? bestId : null;
     const mergeBoundsB = bestId != null ? getBlobBounds(visibleBlobs.find((b) => b.id === bestId)!) : null;
-    // fuseTargetId: the cue rects are actually fused (gap between padded rects < FUSE_THRESHOLD)
-    const FUSE_THRESHOLD = 12;
-    const fuseTargetId =
-      closeTargetId != null && mergeBoundsB != null
-        ? gapBetweenRects(
-            getMergeCueRect(boundsA, MERGE_CUE_PADDING),
-            getMergeCueRect(mergeBoundsB, MERGE_CUE_PADDING)
-          ) < FUSE_THRESHOLD
-          ? closeTargetId
-          : null
-        : null;
+    const cueA = getMergeCueRect(boundsA, MERGE_CUE_PADDING);
+    const cueB = mergeBoundsB != null ? getMergeCueRect(mergeBoundsB, MERGE_CUE_PADDING) : null;
+    const mergePossible =
+      closeTargetId != null && cueB != null && gapBetweenRects(cueA, cueB) <= 0;
     return {
       closeTargetId,
       veryCloseTargetId,
-      fuseTargetId,
+      mergePossible,
       mergeGap: bestId != null ? bestGap : Infinity,
       mergeBoundsA: boundsA,
       mergeBoundsB,
@@ -357,9 +354,9 @@ export default function Home() {
     }
   }, []);
 
-  // When in recall mode, hide the recalled output shortly after pointer leaves both backer and word box
+  // When in recall mode, hide the recalled output shortly after pointer leaves both backer and word box (but not while the "..." menu is open)
   useEffect(() => {
-    if (!showRecalledOutput || backerHovered || isBlobbyHovered) return;
+    if (!showRecalledOutput || backerHovered || isBlobbyHovered || isBlobbyMenuOpen) return;
     recallHideTimerRef.current = setTimeout(() => setShowRecalledOutput(false), 400);
     return () => {
       if (recallHideTimerRef.current) {
@@ -367,7 +364,7 @@ export default function Home() {
         recallHideTimerRef.current = null;
       }
     };
-  }, [showRecalledOutput, backerHovered, isBlobbyHovered]);
+  }, [showRecalledOutput, backerHovered, isBlobbyHovered, isBlobbyMenuOpen]);
 
   // After refresh when logged in: seed lastBlobbyOutput from cloud blobbyLog when it loads so 3s-hover recall works
   useEffect(() => {
@@ -525,6 +522,10 @@ export default function Home() {
         primaryPointerIdRef.current = e.pointerId;
         menuWasOpenAtPointerDown.current = anyMenuOpenRef.current;
         hadSelectionAtPointerDownRef.current = selectedIdsCountRef.current > 0;
+        const activeInBlob =
+          document.activeElement instanceof Node &&
+          document.activeElement.closest?.("[data-blob-card]") != null;
+        hadFocusBlobAtPointerDownRef.current = focusBlobId != null || activeInBlob;
         dragStart.current = { x: e.clientX, y: e.clientY };
         pointerDownTimeRef.current = Date.now();
         gestureChosenRef.current = false;
@@ -534,7 +535,7 @@ export default function Home() {
       }
       (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
     },
-    [anyMenuOpenRef]
+    [anyMenuOpenRef, focusBlobId]
   );
 
   const handlePointerMove = useCallback((e: React.PointerEvent) => {
@@ -659,6 +660,7 @@ export default function Home() {
 
       setSelectedIds([]);
       if (hadSelectionAtPointerDownRef.current) return;
+      if (hadFocusBlobAtPointerDownRef.current) return;
 
       const { x: worldX, y: worldY } = screenToWorld(
         e.clientX - 24,
@@ -718,8 +720,8 @@ export default function Home() {
       multiDragStartPositionsRef.current = null;
       multiDragSelectedIdsRef.current = null;
       mergeDragStartPositionRef.current = null;
-      if (fuseTargetId && blobId !== fuseTargetId) {
-        const targetId = fuseTargetId;
+      if (mergePossible && closeTargetId && blobId !== closeTargetId) {
+        const targetId = closeTargetId;
         // Merge at top of stationary blob if dragged blob is above its vertical midpoint, else at bottom
         const sourceBlob = blobs.find((b) => b.id === blobId);
         const targetBlob = blobs.find((b) => b.id === targetId);
@@ -753,7 +755,7 @@ export default function Home() {
       }
       setDraggingBlobId(null);
     },
-    [dispatch, scale, fuseTargetId, blobs]
+    [dispatch, scale, mergePossible, closeTargetId, blobs]
   );
 
   const handleWheel = useCallback((e: WheelEvent) => {
@@ -1050,7 +1052,7 @@ export default function Home() {
               rectA={rectA}
               rectB={rectB}
               gap={mergeGap}
-              isVeryClose={fuseTargetId === closeTargetId}
+              isVeryClose={mergePossible}
               insertAtTop={insertAtTop}
               viewport={viewport}
             />
@@ -1087,7 +1089,11 @@ export default function Home() {
             }
             isPartOfMultiSelection={selectedIds.length > 1 && selectedIds.includes(blob.id)}
             onMoveSelected={handleMoveSelected}
-            onFocus={() => window.dispatchEvent(new CustomEvent("blob:user-action"))}
+            onFocus={() => {
+              setFocusBlobId(blob.id);
+              window.dispatchEvent(new CustomEvent("blob:user-action"));
+            }}
+            onBlur={() => setFocusBlobId(null)}
             onDuplicate={() => dispatch({ type: "DUPLICATE_BLOB", payload: blob.id })}
             onDelete={() => dispatch({ type: "DELETE_BLOB", payload: blob.id })}
             onHide={() => dispatch({ type: "SET_HIDDEN", payload: { ids: [blob.id], hidden: true } })}
@@ -1199,6 +1205,7 @@ export default function Home() {
             setLlmSummary(null);
           }}
           showOptionsWithoutHover={showRecalledOutput}
+          onMenuOpenChange={setIsBlobbyMenuOpen}
         />
       )}
 
