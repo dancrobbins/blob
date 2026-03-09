@@ -4,9 +4,9 @@ import React from "react";
 import type { OtherPresence } from "@/contexts/PresenceContext";
 import styles from "./OtherCursors.module.css";
 
-const POINTER_LENGTH_PX = 24;
-const BASE_OFFSET = Math.round((POINTER_LENGTH_PX / Math.SQRT2));
-const AVATAR_OFFSET_FROM_BASE = 8;
+/** Cursor icon size (tip at 0,0; base at CURSOR_SIZE,CURSOR_SIZE). */
+const CURSOR_SIZE = 16;
+const GAP_POINTER_TO_AVATAR = 4;
 const AVATAR_SIZE = 24;
 
 function worldToScreen(
@@ -50,41 +50,27 @@ export function OtherCursors({
           pan.y,
           scale
         );
-        const baseX = tipX - BASE_OFFSET;
-        const baseY = tipY - BASE_OFFSET;
-        const avatarCenterX = baseX + AVATAR_OFFSET_FROM_BASE;
-        const avatarCenterY = baseY + AVATAR_OFFSET_FROM_BASE;
-        const avatarLeft = avatarCenterX - AVATAR_SIZE / 2;
-        const avatarTop = avatarCenterY - AVATAR_SIZE / 2;
+        const avatarWrapLeft = tipX + CURSOR_SIZE + GAP_POINTER_TO_AVATAR;
+        const avatarWrapTop = tipY + CURSOR_SIZE + GAP_POINTER_TO_AVATAR;
 
         return (
           <div key={p.sessionId} className={styles.cursor}>
             <svg
               className={styles.pointerSvg}
-              style={{
-                left: baseX,
-                top: baseY,
-                width: POINTER_LENGTH_PX + 4,
-                height: POINTER_LENGTH_PX + 4,
-              }}
-              viewBox="-2 -2 26 26"
+              style={{ left: tipX, top: tipY }}
+              viewBox={`0 0 ${CURSOR_SIZE} ${CURSOR_SIZE}`}
+              width={CURSOR_SIZE}
+              height={CURSOR_SIZE}
               preserveAspectRatio="none"
             >
-              <line
-                x1={0}
-                y1={0}
-                x2={BASE_OFFSET}
-                y2={BASE_OFFSET}
-                className={styles.pointerLine}
-              />
-              <polygon
-                points={`${BASE_OFFSET},${BASE_OFFSET} ${BASE_OFFSET - 2},${BASE_OFFSET - 6} ${BASE_OFFSET - 6},${BASE_OFFSET - 2}`}
-                className={styles.pointerHead}
+              <path
+                d="M 0 0 L 14 2 L 14 14 L 2 14 Z"
+                className={styles.pointerIcon}
               />
             </svg>
             <div
               className={styles.avatarWrap}
-              style={{ left: avatarLeft, top: avatarTop }}
+              style={{ left: avatarWrapLeft, top: avatarWrapTop }}
             >
               {p.avatarUrl ? (
                 <img

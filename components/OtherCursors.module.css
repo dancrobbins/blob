@@ -20,13 +20,7 @@
   color: var(--fg);
 }
 
-.pointerLine {
-  stroke: currentColor;
-  stroke-width: 2;
-  stroke-linecap: round;
-}
-
-.pointerHead {
+.pointerIcon {
   fill: currentColor;
 }
 

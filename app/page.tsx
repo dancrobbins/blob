@@ -163,6 +163,8 @@ export default function Home() {
   const hadSelectionAtPointerDownRef = useRef(false);
   /** True if a blob had the text insertion point at pointer down; tap on empty canvas then does not create a new blob. */
   const hadFocusBlobAtPointerDownRef = useRef(false);
+  /** Ref for user-focused blob (not state) so we don't trigger autoFocus effect when user taps existing blob. */
+  const focusedBlobIdRef = useRef<string | null>(null);
   /** True once we've committed to either pan or selection for this gesture. */
   const gestureChosenRef = useRef(false);
   const activePointersRef = useRef<Map<number, { clientX: number; clientY: number }>>(new Map());
@@ -192,6 +194,8 @@ export default function Home() {
   const backerLeaveGraceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const recallHideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [draggingBlobId, setDraggingBlobId] = useState<string | null>(null);
+  /** Live bounds of the dragging blob from DOM (updated each frame) so merge target matches what's on screen. */
+  const [liveDragBounds, setLiveDragBounds] = useState<Bounds | null>(null);
   const [measuredMergeBounds, setMeasuredMergeBounds] = useState<{
     a: { left: number; top: number; width: number; height: number };
     b: { left: number; top: number; width: number; height: number };
@@ -247,7 +251,49 @@ export default function Home() {
     };
   }, [pan.x, pan.y, scale, initialCameraPosition, persistCamera]);
 
+  // During drag, read the dragging blob's position from the DOM every frame so merge target matches what's on screen.
+  useLayoutEffect(() => {
+    if (!draggingBlobId || !canvasInnerRef.current) {
+      setLiveDragBounds(null);
+      return;
+    }
+    let rafId: number;
+    const tick = () => {
+      const inner = canvasInnerRef.current;
+      const id = draggingBlobId;
+      if (!inner || !id) {
+        setLiveDragBounds(null);
+        return;
+      }
+      const el = inner.querySelector<HTMLElement>(`[data-blob-card][data-blob-id="${id}"] [data-blob-card-inner]`);
+      if (!el) {
+        rafId = requestAnimationFrame(tick);
+        return;
+      }
+      const r = el.getBoundingClientRect();
+      const p = panRef.current;
+      const s = scaleRef.current;
+      if (s === 0) {
+        rafId = requestAnimationFrame(tick);
+        return;
+      }
+      setLiveDragBounds({
+        left: (r.left - p.x) / s,
+        top: (r.top - p.y) / s,
+        width: r.width / s,
+        height: r.height / s,
+      });
+      rafId = requestAnimationFrame(tick);
+    };
+    rafId = requestAnimationFrame(tick);
+    return () => {
+      cancelAnimationFrame(rafId);
+      setLiveDragBounds(null);
+    };
+  }, [draggingBlobId]);
+
   // Merge cues and merge target only consider visible (non-hidden) blobs.
+  // Use live drag bounds from DOM when available so cues appear as soon as the dragged blob overlaps another on screen.
   // mergePossible: true only when merge-cue rects (padded blob bounds) touch or overlap.
   const { closeTargetId, veryCloseTargetId, mergePossible, mergeGap, mergeBoundsA, mergeBoundsB } = React.useMemo(() => {
     if (!draggingBlobId || visibleBlobs.length < 2) {
@@ -257,7 +303,7 @@ export default function Home() {
     if (!draggingBlob) {
       return { closeTargetId: null, veryCloseTargetId: null, mergePossible: false, mergeGap: Infinity, mergeBoundsA: null, mergeBoundsB: null };
     }
-    const boundsA = getBlobBounds(draggingBlob);
+    const boundsA = liveDragBounds ?? getBlobBounds(draggingBlob);
     let bestId: string | null = null;
     let bestGap = Infinity;
     for (const b of visibleBlobs) {
@@ -284,7 +330,7 @@ export default function Home() {
       mergeBoundsA: boundsA,
       mergeBoundsB,
     };
-  }, [draggingBlobId, visibleBlobs]);
+  }, [draggingBlobId, visibleBlobs, liveDragBounds]);
 
   useLayoutEffect(() => {
     if (!draggingBlobId || !closeTargetId || !canvasInnerRef.current || !pan || scale === 0) {
@@ -525,7 +571,8 @@ export default function Home() {
         const activeInBlob =
           document.activeElement instanceof Node &&
           document.activeElement.closest?.("[data-blob-card]") != null;
-        hadFocusBlobAtPointerDownRef.current = focusBlobId != null || activeInBlob;
+        hadFocusBlobAtPointerDownRef.current =
+          focusedBlobIdRef.current != null || focusBlobId != null || activeInBlob;
         dragStart.current = { x: e.clientX, y: e.clientY };
         pointerDownTimeRef.current = Date.now();
         gestureChosenRef.current = false;
@@ -1090,10 +1137,12 @@ export default function Home() {
             isPartOfMultiSelection={selectedIds.length > 1 && selectedIds.includes(blob.id)}
             onMoveSelected={handleMoveSelected}
             onFocus={() => {
-              setFocusBlobId(blob.id);
+              focusedBlobIdRef.current = blob.id;
               window.dispatchEvent(new CustomEvent("blob:user-action"));
             }}
-            onBlur={() => setFocusBlobId(null)}
+            onBlur={() => {
+              focusedBlobIdRef.current = null;
+            }}
             onDuplicate={() => dispatch({ type: "DUPLICATE_BLOB", payload: blob.id })}
             onDelete={() => dispatch({ type: "DELETE_BLOB", payload: blob.id })}
             onHide={() => dispatch({ type: "SET_HIDDEN", payload: { ids: [blob.id], hidden: true } })}

@@ -1,6 +1,6 @@
 {
   "version": "1.0.0",
   "updates": [
-    "Merge only when merge-cue bounds touch or overlap; overlay fused outline and top/bottom insertion bar show only in that case."
+    "Other users' cursor cue: standard pointer icon with tip at cursor; avatar and name bubble directly below and right of pointer base with small gap."
   ]
 }

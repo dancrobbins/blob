@@ -1,8 +1,8 @@
 {
-  "buildNumber": 246,
-  "buildTime": "2026-03-09T22:51:02.913Z",
+  "buildNumber": 248,
+  "buildTime": "2026-03-09T23:00:13.993Z",
   "version": "1.0.0",
   "updates": [
-    "Merge only when merge-cue bounds touch or overlap; overlay fused outline and top/bottom insertion bar show only in that case."
+    "Fixed tap in existing blob not activating insertion point: track user focus in a ref instead of state so autoFocus is not triggered for existing blobs."
   ]
 }

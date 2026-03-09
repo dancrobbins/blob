@@ -1,7 +1,16 @@
 # Changelog
 
+## 2026-03-09 (tap in existing blob activates insertion point again)
+- Tapping in an existing blob again activates the insertion point. User focus is now tracked in a ref (focusedBlobIdRef) instead of state so we do not set focusBlobId and trigger the autoFocus effect when the user taps an existing blob; autoFocus remains only for newly created blobs.
+
+## 2026-03-09 (merge cues use live drag position from DOM)
+- Merge cues (outline and insertion bar) were not showing when a blob was dragged near or over another because the merge target was computed from React state, which can lag behind the pointer. The dragging blob’s position is now read from the DOM every frame during drag, so the closest blob and “merge possible” state match what’s on screen and cues appear as soon as the blobs overlap.
+
 ## 2026-03-09 (merge and overlay only when merge bounds touch)
 - Blobs merge on release only when their merge-cue rects (padded blob bounds) touch or overlap, not when merely within 12px. The overlay fused outline and the top/bottom insertion bar now appear only when merge is possible (cue rects touch or overlap).
+
+## 2026-03-09 (pointer cue layout match screenshot)
+- Other users' cursor cue adjusted to match design: standard pointer icon (tip at cursor position, base down-right), with avatar and name bubble directly below and to the right of the pointer base with a small gap; avatar and label side-by-side.
 
 ## 2026-03-09 (pointer from avatar to cursor tip)
 - Other users' (and multiple tabs') cursors now show a pointer line and arrowhead whose tip is at the actual cursor position; the avatar bubble sits directly below and to the right of the pointer base. On mobile, the pointer is shown at the last touch or hover location (already sent via pointer events).
