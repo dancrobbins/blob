@@ -1,5 +1,8 @@
 # Changelog
 
+## 2026-03-09 (selection bounds from DOM)
+- Selection bounds were previously computed from blob store data (x, y, width, height), which could be out of sync with rendered positions or include corrupted/outlier values and produce an oversized or wrong dashed rectangle. They are now computed from the DOM: each selected blob card's on-screen rect is read and converted to world coordinates, then unioned. The selection rectangle now matches the visible blob shapes and still moves with pan/scale.
+
 ## 2026-03-09 (multi-select menu button theme)
 - The \"…\" button on the multi-selection overlay now uses the same styling as the blob \"…\" button in dark theme (dark background and matching hover), instead of appearing in the opposite theme.
 

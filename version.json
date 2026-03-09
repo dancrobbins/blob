@@ -1,6 +1,6 @@
 {
   "version": "1.0.0",
   "updates": [
-    "Multi-select \"…\" button now uses the same theme as blob controls (dark background in dark theme)."
+    "Selection bounds are now computed from the DOM (rendered blob positions) and converted to world coords, fixing incorrect or oversized selection rectangles."
   ]
 }

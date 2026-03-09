@@ -172,6 +172,7 @@ export default function Home() {
   const [focusBlobId, setFocusBlobId] = useState<string | null>(null);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [selectionRect, setSelectionRect] = useState<Bounds | null>(null);
+  const [selectionBounds, setSelectionBounds] = useState<Bounds | null>(null);
   const [pan, setPan] = useState({ x: 0, y: 0 });
   const [scale, setScale] = useState(1);
   const [isPanning, setIsPanning] = useState(false);
@@ -414,32 +415,54 @@ export default function Home() {
     prevBlobCountRef.current = blobs.length;
   }, [blobs.length]);
 
-  // Compute selection bounds in world coordinates (so overlay moves with pan/scale)
-  const selectionBounds = React.useMemo(() => {
-    if (selectedIds.length === 0) return null;
+  // Compute selection bounds in world coordinates from DOM (matches rendered blob positions; overlay moves with pan/scale)
+  useLayoutEffect(() => {
+    if (selectedIds.length === 0) {
+      setSelectionBounds(null);
+      return;
+    }
+    const canvas = canvasRef.current;
+    const canvasInner = canvasInnerRef.current;
+    if (!canvas || !canvasInner || scale <= 0) return;
+    const canvasRect = canvas.getBoundingClientRect();
+    const panX = pan.x;
+    const panY = pan.y;
     const idSet = new Set(selectedIds);
+    const cards = canvas.querySelectorAll<HTMLElement>("[data-blob-card][data-blob-id]");
     let bounds: Bounds | null = null;
-    for (const blob of visibleBlobs) {
-      if (!idSet.has(blob.id)) continue;
-      const r = getBlobBounds(blob);
+    for (const card of cards) {
+      const id = card.getAttribute("data-blob-id");
+      if (!id || !idSet.has(id)) continue;
+      const inner = card.querySelector<HTMLElement>("[data-blob-card-inner]");
+      const el = inner ?? card;
+      const r = el.getBoundingClientRect();
+      // Convert screen rect to world coordinates (same system as canvas inner transform)
+      const worldLeft = (r.left - canvasRect.left - panX) / scale;
+      const worldTop = (r.top - canvasRect.top - panY) / scale;
+      const worldWidth = r.width / scale;
+      const worldHeight = r.height / scale;
+      if (!Number.isFinite(worldLeft + worldTop + worldWidth + worldHeight)) continue;
       if (!bounds) {
-        bounds = { left: r.left, top: r.top, width: r.width, height: r.height };
+        bounds = { left: worldLeft, top: worldTop, width: worldWidth, height: worldHeight };
       } else {
-        const left = Math.min(bounds.left, r.left);
-        const top = Math.min(bounds.top, r.top);
-        const right = Math.max(bounds.left + bounds.width, r.left + r.width);
-        const bottom = Math.max(bounds.top + bounds.height, r.top + r.height);
+        const left = Math.min(bounds.left, worldLeft);
+        const top = Math.min(bounds.top, worldTop);
+        const right = Math.max(bounds.left + bounds.width, worldLeft + worldWidth);
+        const bottom = Math.max(bounds.top + bounds.height, worldTop + worldHeight);
         bounds = { left, top, width: right - left, height: bottom - top };
       }
     }
-    if (!bounds) return null;
-    return {
-      left: bounds.left - SELECTION_PADDING,
-      top: bounds.top - SELECTION_PADDING,
-      width: bounds.width + SELECTION_PADDING * 2,
-      height: bounds.height + SELECTION_PADDING * 2,
-    };
-  }, [selectedIds, visibleBlobs]);
+    if (bounds) {
+      setSelectionBounds({
+        left: bounds.left - SELECTION_PADDING,
+        top: bounds.top - SELECTION_PADDING,
+        width: bounds.width + SELECTION_PADDING * 2,
+        height: bounds.height + SELECTION_PADDING * 2,
+      });
+    } else {
+      setSelectionBounds(null);
+    }
+  }, [selectedIds, visibleBlobs, pan.x, pan.y, scale]);
 
   useEffect(() => {
     selectedIdsCountRef.current = selectedIds.length;
