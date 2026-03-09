@@ -5,13 +5,10 @@
   width: 100%;
 }
 
-/* Layer 1: blobs (card bodies) */
+/* Layer 1: blobs (card bodies) — full viewport; header overlays on top */
 .canvas {
   position: fixed;
-  top: 52px;
-  left: 0;
-  right: 0;
-  bottom: 0;
+  inset: 0;
   z-index: 1;
   -webkit-tap-highlight-color: transparent;
   overflow: hidden;
@@ -29,10 +26,7 @@
 /* Layer 4: dragger and "..." buttons (same transform as canvas, portaled) */
 .controlsOverlay {
   position: fixed;
-  top: 52px;
-  left: 0;
-  right: 0;
-  bottom: 0;
+  inset: 0;
   z-index: 4;
   pointer-events: none;
   overflow: hidden;
@@ -45,19 +39,33 @@
   pointer-events: none;
 }
 
-/* Layer 6: popup menus (dropdowns portaled here) */
+/* Only blob control wrappers (and their contents) receive events so overlay never blocks hover elsewhere */
+.controlsOverlay * {
+  pointer-events: none;
+}
+
+.controlsOverlay [data-blob-controls],
+.controlsOverlay [data-blob-controls] * {
+  pointer-events: auto;
+}
+
+/* Layer 6: popup menus (dropdowns portaled here). Zero-size so it never blocks canvas/header hover or click. */
 .popupLayer {
   position: fixed;
-  inset: 0;
+  top: 0;
+  left: 0;
+  width: 0;
+  height: 0;
+  overflow: visible;
   z-index: 10;
   pointer-events: none;
 }
 
-/* Portal container: none so canvas receives events; portaled menu uses pointer-events: auto */
-.popupLayer > * {
-  pointer-events: none;
+/* Portaled blob menu is position:fixed with its own coords; only the menu receives events */
+.popupLayer [data-popup-menu] {
+  pointer-events: auto;
 }
 
-.popupLayer > * > * {
+.popupLayer [data-popup-menu] * {
   pointer-events: auto;
 }

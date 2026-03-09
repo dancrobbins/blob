@@ -1,0 +1,22 @@
+---
+description: Command "explainIt" — explain the issue, bug fix, or how the feature was implemented in plain English
+alwaysApply: true
+---
+
+# explainIt command
+
+When the user says **explainIt** (e.g. "explainIt", "explain it"), treat it as a request to:
+
+**Explain in plain English the issue, the bug fix, or how the feature was implemented.**
+
+## How to respond
+
+- Summarize **what was wrong** (if it was a bug), **what was fixed and how** (if it was a fix), or **how the feature works** (if it was a feature).
+- Use **plain English**: short sentences, avoid unexplained jargon or acronyms. Assume the user is not deep in the codebase.
+- Focus on the **cause and the change** (or the behavior and flow for a feature). One short paragraph is usually enough; add a second only if needed for clarity.
+
+## When to use
+
+- After a bug fix: "explainIt" → what was broken, why, and what we did to fix it.
+- After a feature: "explainIt" → what the feature does and how it was implemented at a high level.
+- After diagnosing an issue: "explainIt" → what the issue is and what the user can do.

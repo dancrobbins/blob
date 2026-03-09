@@ -19,8 +19,16 @@
 | Command      | Description                                                                                                                                                                                                                             |
 | ------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **takeALook** | Takes a screenshot of the app in Cursor Browser, checks for TypeScript and build errors, and reports in plain English what’s wrong and how to fix it (visual/layout issues and code errors). Chat-only: say **takeALook** or **take a look**. |
+| **explainIt** | Asks the agent to explain the issue, bug fix, or how the feature was implemented in plain English. Chat-only: say **explainIt** or **explain it**. |
 | **testSync** | Runs the two-tab Google sync E2E test: rebuilds the app, restarts the dev server, launches Playwright with two tabs, shows in-app test controls (Cancel test / Rerun test), and reports the result in plain English with recommended fixes. |
 | **testSimpleSync** | Standalone test (no app): writes test blobs and preferences to Supabase `user_notes`, then reads them back. Verifies the backend store round-trip. Requires `SUPABASE_SERVICE_ROLE_KEY` in `.env.local`. Run with `npm run testSimpleSync`. |
+
+## Auditing
+
+| Command      | Description                                                                                                                                                                                                                             |
+| ------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **fixMobile** | Audits all app interactions for mobile: resizes Cursor Browser to a mobile viewport, exercises menus and primary actions, checks touch targets and layout, then reports in plain English what works, what’s wrong, and how to fix it. Chat-only: say **fixMobile** or **fix mobile**. |
+| **auditMobile** | Alias for **fixMobile** (same behavior). Chat-only: say **auditMobile** or **audit mobile**. |
 
 ## Running via npm
 
@@ -30,6 +38,3 @@
 - `npm run testSync` (testing), `npm run testSimpleSync` (backend sync round-trip, no app)
 - `npm run pushme` or `npm run pushme -- "commit message"`
 - `npm run pushall` or `npm run pushall -- "commit message"`
-
-**guideMe** and **takeALook** are chat-only (no npm script): say **guideMe** &lt;topic&gt; or **takeALook** (screenshot + diagnose app and TS/build errors in plain English).
-

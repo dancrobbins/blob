@@ -20,17 +20,22 @@ import {
   getMergedFlag,
   setMergedFlag,
   clearMergedFlag,
+  getLastPushTime,
+  setLastPushTime,
   mergeLocalAndCloudBlobs,
   blobsEqual,
   debouncedSaveToCloud,
   upsertUserBlobs,
   clearSaveTimeout,
+  clearAllLocalBlobData,
+  appendBlobbyLog as appendBlobbyLogPersistence,
+  loadBlobbyLog,
   POSITION_SAVE_DEBOUNCE_MS,
   CLOUD_POLL_INTERVAL_MS,
   CLOUD_POLL_INITIAL_DELAY_MS,
 } from "@/lib/persistence";
-import { loadPreferences, savePreferences, mergeCloudPreferences } from "@/lib/preferences-store";
-import type { Preferences } from "@/lib/types";
+import { loadPreferences, savePreferences, clearPreferences, mergeCloudPreferences } from "@/lib/preferences-store";
+import type { CameraPosition, Preferences } from "@/lib/types";
 import { supabase } from "@/lib/supabase";
 import { MergeDialog } from "@/components/MergeDialog";
 
@@ -57,6 +62,16 @@ type BlobsContextValue = {
   incrementMenuOpen: () => void;
   /** Call when a menu closes; anyMenuOpenRef set false when count reaches 0. */
   decrementMenuOpen: () => void;
+  /** Append one Blobby output to the log (cloud when logged in, else localStorage). */
+  appendBlobbyLog: (text: string) => void;
+  /** Blobby output log (markdown); from cloud when logged in, else empty. Use for recall when lastBlobbyOutput is null. */
+  blobbyLog: string;
+  /** Camera (pan/zoom) from cloud; apply once on load then clear. Null after applied or when not logged in. */
+  initialCameraPosition: CameraPosition | null;
+  /** Call after applying initialCameraPosition so it is not re-applied. */
+  clearInitialCamera: () => void;
+  /** Persist camera to cloud (debounced). Use { immediate: true } after zoom-to-fit so it saves before refresh. No-op when not logged in. */
+  persistCamera: (camera: CameraPosition, options?: { immediate?: boolean }) => void;
 };
 
 const BlobsContext = createContext<BlobsContextValue | null>(null);
@@ -67,6 +82,7 @@ const MAJOR_ACTIONS = new Set<BlobsAction["type"]>([
   "DELETE_BLOBS",
   "DUPLICATE_BLOB",
   "DUPLICATE_BLOBS",
+  "MERGE_BLOBS",
   "SET_HIDDEN",
   "UNHIDE_ALL",
   "SET_BLOB_SIZE",
@@ -80,6 +96,7 @@ const UNDOABLE_ACTIONS = new Set<BlobsAction["type"]>([
   "DELETE_BLOBS",
   "DUPLICATE_BLOB",
   "DUPLICATE_BLOBS",
+  "MERGE_BLOBS",
   "SET_POSITION",
   "SET_LOCKED",
   "SET_HIDDEN",
@@ -109,8 +126,25 @@ export function BlobsProvider({ children }: { children: ReactNode }) {
   const blobsRef = React.useRef<Blob[]>(blobs);
   const syncingRef = React.useRef(false);
   const prevUserIdRef = React.useRef<string | null>(null);
+  const [blobbyLog, setBlobbyLog] = React.useState("");
+  const blobbyLogRef = React.useRef(blobbyLog);
+  blobbyLogRef.current = blobbyLog;
   const [showMergeDialog, setShowMergeDialog] = React.useState(false);
   const mergeDialogResolveRef = React.useRef<((value: boolean) => void) | null>(null);
+  const cameraRef = React.useRef<CameraPosition | null>(null);
+  const lastFetchedCameraRef = React.useRef<{ camera: CameraPosition | null; updatedAt: string | null }>({ camera: null, updatedAt: null });
+  const [initialCameraPosition, setInitialCameraPosition] = React.useState<CameraPosition | null>(null);
+
+  /** Camera to send on next upsert: use our camera if it's newer than last-fetched, else keep last-fetched so we don't overwrite another tab's newer camera. */
+  const getCameraToWrite = useCallback((): CameraPosition | undefined => {
+    const our = cameraRef.current;
+    const lf = lastFetchedCameraRef.current;
+    if (!our) return lf.camera ?? undefined;
+    if (!lf.camera) return our;
+    if (!our.updatedAt) return our;
+    if (!lf.updatedAt) return our;
+    return our.updatedAt >= lf.updatedAt ? our : lf.camera;
+  }, []);
 
   const [undoStack, setUndoStack] = React.useState<Blob[][]>([]);
   const [redoStack, setRedoStack] = React.useState<Blob[][]>([]);
@@ -127,7 +161,13 @@ export function BlobsProvider({ children }: { children: ReactNode }) {
         action.type !== POSITION_ACTION ||
         lastActionTypeForUndoRef.current !== POSITION_ACTION;
       if (shouldPush) {
-        const snapshot = blobsRef.current.map((b) => ({ ...b }));
+        let snapshot = blobsRef.current.map((b) => ({ ...b }));
+        if (action.type === "MERGE_BLOBS" && action.payload.sourcePosition != null) {
+          const { sourceId, sourcePosition } = action.payload;
+          snapshot = snapshot.map((b) =>
+            b.id === sourceId ? { ...b, x: sourcePosition.x, y: sourcePosition.y } : b
+          );
+        }
         setUndoStack((s) => {
           const next = [...s, snapshot];
           return next.length > UNDO_HISTORY_MAX ? next.slice(-UNDO_HISTORY_MAX) : next;
@@ -175,11 +215,11 @@ export function BlobsProvider({ children }: { children: ReactNode }) {
     (p: Preferences | ((prev: Preferences) => Preferences)) => {
       setPreferencesState((prev) => {
         const next = typeof p === "function" ? p(prev) : p;
-        savePreferences(next);
+        if (!userId) savePreferences(next);
         return next;
       });
     },
-    []
+    [userId]
   );
 
   // Hydrate from localStorage on mount
@@ -224,11 +264,20 @@ export function BlobsProvider({ children }: { children: ReactNode }) {
         const current = loadBlobsFromStorage();
         console.log("[blob sync] cloud blobs:", cloud?.blobs?.length ?? 0, "local blobs:", current.length);
 
+        const currentPrefs = loadPreferences();
+        const mergedPrefs = cloud?.preferences
+          ? mergeCloudPreferences(currentPrefs, cloud.preferences)
+          : currentPrefs;
         if (cloud?.preferences) {
-          const currentPrefs = loadPreferences();
-          const mergedPrefs = mergeCloudPreferences(currentPrefs, cloud.preferences);
           setPreferencesState(mergedPrefs);
-          savePreferences(mergedPrefs);
+        }
+        if (cloud) {
+          setBlobbyLog(cloud.blobbyLog ?? "");
+        }
+        if (cloud?.camera) {
+          cameraRef.current = cloud.camera;
+          lastFetchedCameraRef.current = { camera: cloud.camera, updatedAt: cloud.camera.updatedAt ?? null };
+          setInitialCameraPosition(cloud.camera);
         }
 
         let pullIntoCloud = true;
@@ -241,28 +290,28 @@ export function BlobsProvider({ children }: { children: ReactNode }) {
 
         if (!pullIntoCloud) {
           // User chose to discard local: use cloud only (or empty), no cache
-          saveBlobsToStorage([]);
           dispatch({ type: "SET_BLOBS", payload: cloud?.blobs ?? [] });
-          setMergedFlag(userId);
+          setMergedFlag(userId, true);
+          if (cloud?.updatedAt) setLastPushTime(userId, cloud.updatedAt, true);
           return;
         }
 
         if (!cloud) {
           console.log("[blob sync] no cloud data, pushing local to cloud");
-          const prefs = loadPreferences();
-          await upsertUserBlobs(userId, current, prefs);
-          if (!getMergedFlag(userId)) setMergedFlag(userId);
+          await upsertUserBlobs(userId, current, mergedPrefs, blobbyLogRef.current, getCameraToWrite());
+          if (!getMergedFlag(userId, true)) setMergedFlag(userId, true);
           return;
         }
 
         const mergedBlobs = mergeLocalAndCloudBlobs(current, cloud.blobs);
         console.log("[blob sync] merged blobs:", mergedBlobs.length);
         dispatch({ type: "SET_BLOBS", payload: mergedBlobs });
-        setMergedFlag(userId);
-        const prefs = loadPreferences();
-        await upsertUserBlobs(userId, mergedBlobs, prefs);
+        setMergedFlag(userId, true);
+        await upsertUserBlobs(userId, mergedBlobs, mergedPrefs, cloud.blobbyLog ?? blobbyLogRef.current, getCameraToWrite());
       } finally {
         syncingRef.current = false;
+        clearAllLocalBlobData();
+        clearPreferences();
       }
     };
     run();
@@ -283,6 +332,7 @@ export function BlobsProvider({ children }: { children: ReactNode }) {
       dispatchReducer({ type: "SET_BLOBS", payload: [] });
       setUndoStack([]);
       setRedoStack([]);
+      setBlobbyLog("");
       saveBlobsToStorage([]);
       if (prevUserId) clearMergedFlag(prevUserId);
     }
@@ -305,10 +355,11 @@ export function BlobsProvider({ children }: { children: ReactNode }) {
     }
 
     const action = lastActionRef.current;
+    const camera = getCameraToWrite();
     if (action === "major") {
       clearSaveTimeout();
       lastActionRef.current = null;
-      upsertUserBlobs(userId, blobs, preferences);
+      upsertUserBlobs(userId, blobs, preferences, blobbyLogRef.current, camera);
       return; // skip debounced save this run
     }
     if (action === "position") {
@@ -317,12 +368,12 @@ export function BlobsProvider({ children }: { children: ReactNode }) {
         positionSaveTimeoutRef.current = null;
         lastActionRef.current = null;
         clearSaveTimeout();
-        upsertUserBlobs(userId, blobsRef.current, preferences);
+        upsertUserBlobs(userId, blobsRef.current, preferences, blobbyLogRef.current, getCameraToWrite());
       }, POSITION_SAVE_DEBOUNCE_MS);
     }
 
-    debouncedSaveToCloud(userId, blobs, preferences);
-  }, [blobs, userId, preferences, isLoading]);
+    debouncedSaveToCloud(userId, blobs, preferences, blobbyLogRef.current, camera);
+  }, [blobs, userId, preferences, isLoading, getCameraToWrite]);
 
   // Poll cloud when logged in: first poll soon, then on a cadence; also poll when tab/window becomes visible (sync when user switches to this tab)
   useEffect(() => {
@@ -332,13 +383,37 @@ export function BlobsProvider({ children }: { children: ReactNode }) {
       const cloud = await fetchUserBlobs(userId);
       if (!cloud) return;
       const latestLocal = blobsRef.current;
-      const merged = mergeLocalAndCloudBlobs(latestLocal, cloud.blobs);
+      let merged = mergeLocalAndCloudBlobs(latestLocal, cloud.blobs);
+      // When cloud is ahead of our last push, apply remote deletions: drop any blob not in cloud.
+      const lastPush = getLastPushTime(userId, true);
+      if (
+        cloud.updatedAt &&
+        lastPush &&
+        new Date(cloud.updatedAt) > new Date(lastPush)
+      ) {
+        const cloudIds = new Set(cloud.blobs.map((b) => b.id));
+        merged = merged.filter((b) => cloudIds.has(b.id));
+      }
       if (!blobsEqual(merged, latestLocal)) {
         console.log("[blob sync] poll: cloud has updates, merging", merged.length, "blobs");
         dispatchReducer({ type: "SET_BLOBS", payload: merged });
         // Logged-in users: do not cache in browser
       } else {
         console.log("[blob sync] poll: cloud fetch ok, no changes");
+      }
+      // Sync preferences from cloud (theme, blobby color, etc.) — in memory only when logged in
+      if (cloud.preferences) {
+        const currentPrefs = loadPreferences();
+        const mergedPrefs = mergeCloudPreferences(currentPrefs, cloud.preferences);
+        setPreferencesState(mergedPrefs);
+      }
+      // Sync Blobby log from cloud (other devices may have appended)
+      if (cloud.blobbyLog != null && cloud.blobbyLog !== blobbyLogRef.current) {
+        setBlobbyLog(cloud.blobbyLog);
+      }
+      // Remember cloud camera so we don't overwrite a newer camera from another tab when we save
+      if (cloud.camera) {
+        lastFetchedCameraRef.current = { camera: cloud.camera, updatedAt: cloud.camera.updatedAt ?? null };
       }
     };
 
@@ -360,6 +435,35 @@ export function BlobsProvider({ children }: { children: ReactNode }) {
     };
   }, [userId]);
 
+  const appendBlobbyLog = useCallback(
+    (text: string) => {
+      const currentLog = userId ? blobbyLogRef.current : loadBlobbyLog();
+      const newLog = appendBlobbyLogPersistence(userId, text, currentLog);
+      setBlobbyLog(newLog);
+      if (userId) {
+        upsertUserBlobs(userId, blobsRef.current, preferences, newLog, getCameraToWrite());
+      }
+    },
+    [userId, preferences, getCameraToWrite]
+  );
+
+  const clearInitialCamera = useCallback(() => setInitialCameraPosition(null), []);
+  const persistCamera = useCallback(
+    (camera: CameraPosition, options?: { immediate?: boolean }) => {
+      const withTimestamp: CameraPosition = { ...camera, updatedAt: new Date().toISOString() };
+      cameraRef.current = withTimestamp;
+      if (!userId) return;
+      if (options?.immediate) {
+        clearSaveTimeout();
+        upsertUserBlobs(userId, blobsRef.current, preferences, blobbyLogRef.current, withTimestamp);
+        lastFetchedCameraRef.current = { camera: withTimestamp, updatedAt: withTimestamp.updatedAt ?? null };
+      } else {
+        debouncedSaveToCloud(userId, blobsRef.current, preferences, blobbyLogRef.current, withTimestamp);
+      }
+    },
+    [userId, preferences]
+  );
+
   const value: BlobsContextValue = {
     blobs,
     dispatch,
@@ -376,6 +480,11 @@ export function BlobsProvider({ children }: { children: ReactNode }) {
     anyMenuOpenRef,
     incrementMenuOpen,
     decrementMenuOpen,
+    appendBlobbyLog,
+    blobbyLog,
+    initialCameraPosition,
+    clearInitialCamera,
+    persistCamera,
   };
 
   return (

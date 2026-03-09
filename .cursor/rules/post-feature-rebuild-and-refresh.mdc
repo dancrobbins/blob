@@ -12,7 +12,7 @@ alwaysApply: true
 □ 2. Append to `changelog.md` (durable history — never clear this)  
 □ 3. Run `npm run runapp` — fix build errors and re-run until it exits 0  
 □ 4. Call `browser_tabs` → `browser_navigate` with app URL + cache-busting param  
-□ 5. Tell the user **how to verify** in plain English (see Step 5 below)  
+□ 5. Tell the user **how to verify** in plain English and give a **plain English explanation** of the issue, bug fix, or how the feature was implemented (see Step 5 below)  
 
 ---
 
@@ -24,7 +24,7 @@ alwaysApply: true
 - ❌ Leaving `version.json` `updates` unchanged from a previous session.
 - ❌ Leaving stale bullets in `version.json` that don't match this session's changes.
 - ❌ **Skipping or omitting Step 1** because the change was "only CSS," "only a small tweak," "just layout," or "didn't touch logic." Version and tooltip must be updated for every user-facing change.
-- ❌ **Ending without "How to verify."** You must tell the user the simplest steps to verify the change in plain English (Step 5).
+- ❌ **Ending without "How to verify" and a plain English explanation.** You must give both verification steps and a short explanation of the issue/fix/feature in plain English (Step 5).
 
 ---
 
@@ -82,25 +82,37 @@ Example — what to write after fixing a crash and adding a feature:
 
 - Call `browser_tabs` with `action: "list"`.
 - **Always use `http://localhost:3000`** (the canonical port) with a cache-busting query param (e.g. `?_=1741234567`). Do not use 3001 or any other port — the runapp script ensures the dev server is on 3000.
-- If no tab has a URL containing `localhost:3000`: call `browser_navigate` with that URL and `newTab: true` to open a new Cursor Browser tab. Otherwise call `browser_navigate` to refresh the existing app tab. Do not tell the user to open the URL.
+- If a tab already has a URL containing `localhost:3000`, repurpose it: call `browser_navigate` with that URL (with cache-bust) and that tab's viewId to refresh. Only if no such tab exists, call `browser_navigate` with `newTab: true` to open a new tab. Do not tell the user to open the URL.
 
 ---
 
-## Step 5 — Tell the user how to verify (mandatory, plain English)
+## Step 5 — How to verify + plain English explanation (mandatory)
 
-**After steps 1–4, you must give the user the simplest steps to verify the change. Use plain English. No jargon unless necessary.**
+**After steps 1–4, you must give the user (1) how to verify the change and (2) a short plain English explanation of the issue, bug fix, or how the feature was implemented. Use plain English throughout. No jargon unless necessary.**
+
+### Part A — How to verify
 
 - Write a short **"How to verify"** section (or a single short paragraph) that answers: *What should the user do in the app to confirm the feature works or the bug is fixed?*
 - Use **numbered steps** or **short sentences**. One to four steps is usually enough.
 - Be specific to the change you made (e.g. "Open the main menu (☰), then tap the build date — you should see the new bullet points" not "Check the app").
 - Do not assume the user knows where a control is; name it (e.g. "the three-line menu at the top left" or "the build date in the main menu").
-- **Do not skip this step.** Ending with only "Done" or "The app has been refreshed" is not acceptable. Always include verification steps.
+
+### Part B — Plain English explanation
+
+- In one or two short sentences, explain **what was wrong** (if a bug), **what was fixed and how** (if a fix), or **how the feature works / was implemented** (if a feature). Same style as the **explainIt** command: cause and change, no unexplained jargon.
+
+### Do not skip Step 5
+
+- Ending with only "Done" or "The app has been refreshed" is not acceptable. Always include both verification steps and the plain English explanation.
 
 **Examples:**
 
-- *How to verify: Open the main menu (☰), tap the build date. You should see the new bullet in the tooltip.*
-- *How to verify: Create a blob, tap the "…" on it, choose Delete, and confirm. The blob should disappear and no error appear.*
-- *How to verify: Open the main menu, switch theme to Dark. The page should turn dark and the Blobby at the bottom should stay visible.*
+- *What changed: The app was freezing because a list used in an effect was recreated every render, so the effect ran in a loop. We now memoize that list so it only updates when the underlying data changes.*  
+  *How to verify: Open the app, add a blob, drag it. The canvas should stay responsive and not freeze.*
+- *What changed: Deleted the old `pages/_document` file and the `pages` folder so Next only uses the App Router; the build no longer fails looking for that file.*  
+  *How to verify: Run runapp or restartall; the build should complete and the app should load in the browser.*
+- *What changed: Added a plain English explanation step to the post-feature rule so every change includes both "how to verify" and a short explanation of the fix or feature.*  
+  *How to verify: After your next code change, the agent should reply with both verification steps and an explanation in plain English.*
 
 ---
 

@@ -1,5 +1,158 @@
 # Changelog
 
+## 2026-03-09 (multi-select menu button theme)
+- The \"…\" button on the multi-selection overlay now uses the same styling as the blob \"…\" button in dark theme (dark background and matching hover), instead of appearing in the opposite theme.
+
+## 2026-03-09 (no per-blob hover UI during multi-select)
+- When two or more blobs are selected, individual blobs no longer show their on-hover UI (drag handle and \"…\" menu); only the selection overlay's controls are shown.
+
+## 2026-03-09 (selection overlay moves with pan)
+- During press-and-drag canvas (pan), the multi-selection dashed rectangle and its controls now move with the canvas. Selection bounds are computed in world coordinates and the overlay is rendered inside the transformed canvas layer.
+
+## 2026-03-09 (press-and-drag does not deselect)
+- The press-and-drag canvas action (drawing a selection rectangle) no longer clears the current selection when you press; the selection updates only when you release to the blobs enclosed by the new rectangle.
+
+## 2026-03-09 (multi-select controls outside rect, hover-only)
+- The \"…\" and drag buttons for the multi-selection rectangle are now outside the upper left corner of the selection (like blob cards) and appear only when hovering over any part of the selection rectangle.
+
+## 2026-03-09 (camera zoom-to-fit and last-write-wins)
+- Zoom-to-fit now saves camera to the cloud immediately so refresh rehydrates it.
+- Camera uses last-write-wins by timestamp so another tab or device does not overwrite a newer view.
+
+## 2026-03-09 (theme in cloud, rehydrate on load)
+- Theme is persisted in the cloud and rehydrated on app load; login merge no longer overwrites cloud theme with local.
+
+## 2026-03-09 (undo merge restores blob position)
+- After undoing a merge, the blob that was dragged is put back exactly where it was on the canvas before the drag (single- or multi-blob drag).
+
+## 2026-03-09 (Escape deselects blobs)
+- Pressing the Escape key deselects any selected blobs.
+
+## 2026-03-09 (undo for structure editing and cut/paste)
+- Undo and redo now apply to bullet structure editing: Ctrl+Up / Ctrl+Down (move line), Tab and Shift+Tab (indent/outdent) in both Raw and Preview, and to cut from and paste into a blob.
+
+## 2026-03-09 (multi-selection rect blob shape only)
+- Multi-selection dashed rectangle is based on the blob shape bounds (the card) only; it no longer includes the on-hover controls (drag handle and \"…\" menu), which live in a separate overlay.
+
+## 2026-03-09 (Blobby chat hide on leave after action)
+- After doing any action with the Blobby chat (e.g. Copy or opening the \"...\" menu), moving the mouse or finger off the chat output now hides the output.
+
+## 2026-03-09 (link preview hit area and event handling)
+- Link preview no longer disappears when moving the mouse from the link toward the thumbnail; extended 16px hit area around the preview so it is easier to mouse onto.
+- Link preview closes on click outside (like blob menu) and on mouse leave of the preview only; z-order and event handling aligned with popup menus.
+
+## 2026-03-09 (camera position in cloud)
+- Zoom and pan (camera position) are now saved to the cloud and restored on refresh when logged in.
+
+## 2026-03-09 (cursor down after move line to top)
+- Fixed: after moving a bullet line to the topmost position (Ctrl+Up), pressing the Down arrow to move to lower lines failed. The selectionchange handler was moving the caret to the first line whenever it was at the start of any line; it now moves the caret only to \"after the bullet\" within the same line.
+
+## 2026-03-09 (link hover preview thumbnail)
+- Hover over a URL in Preview for 3 seconds to show a thumbnail preview of the destination (og:image); tap the preview to open the URL in a new tab; mouse out of the preview to hide it; preview is clamped to stay fully on-screen.
+
+## 2026-03-09 (URL tap opens new tab only)
+- Tapping a URL in Preview opens it in a new tab only; the app tab is no longer replaced (pointerdown + click both prevent default).
+
+## 2026-03-09 (merge insertion bar)
+- On merge, a subtle horizontal insertion bar appears in the target blob: at the top of the target's content area when the dragged blob is above its midpoint, at the bottom when below, spanning the width of the target blob's text area.
+
+## 2026-03-09 (no localStorage when logged in)
+- When you are logged in, nothing is stored in local storage; data is kept only in memory and in the cloud to reduce security risk on shared devices.
+
+## 2026-03-09 (Blobby log in cloud)
+- Blobby chat log is now saved to the cloud with your account (Supabase user_notes.data.blobbyLog); anonymous users continue to use localStorage.
+
+## 2026-03-09 (Preview mode clickable links)
+- Preview mode: markdown links [text](url) now render as clickable links; clicking opens the URL in a new tab.
+
+## 2026-03-09 (paste URL as markdown link)
+- Pasting a URL into a blob inserts it as a markdown link [url](url) so it is clickable in markdown view and when copied.
+
+## 2026-03-09 (Blobby hover recall and log)
+- Hover over Blobby for at least 3 seconds to show the last displayed output again, with the \"...\" button.
+- All Blobby (AI) output is logged in markdown with date/time metadata and saved with the project (localStorage).
+
+## 2026-03-09 (Blobby copy provenance)
+- Copy from Blobby's chat now appends \"-- Blobby the AI said this on <date and time>\" so pasted text has simple provenance.
+
+## 2026-03-09 (Blobby options button position)
+- Blobby output: \"...\" button is now in the upper-left outside the chat bubble, with a large hit area so it stays tappable as the mouse or finger moves toward it.
+
+## 2026-03-09 (merge content by drop position)
+- Blob merge content order: when you drag a blob onto another, the dragged blob's text is merged at the top of the stationary blob if the dragged blob is above the stationary blob's vertical midpoint, and at the bottom if below.
+
+## 2026-03-09 (zoom to fit)
+- Renamed Show all to Zoom to fit; the command always changes pan and zoom so visible blobs fill the screen; the button is always enabled.
+
+## 2026-03-09 (dragger to menu button hit region)
+- Fixed \"…\" button disappearing or not tappable when moving cursor from dragger to the button: portaled controls wrapper now has explicit size so hover stays active and the button stays visible and clickable.
+- Fixed \"…\" button disappearing when hovering it: menu button and menu wrap now reinforce hover (onMouseEnter) so the button stays visible and tappable.
+
+## 2026-03-09 (merge in Raw no resize)
+- When merging blobs in Raw mode, the merged blob keeps the target blob's current size: we capture the target's size from the DOM before merging so it doesn't resize after the merge.
+
+## 2026-03-09 (show all full extent)
+- Show all now uses each blob's actual rendered size (measured from the DOM) so the full extent of every blob is on screen; blobs that grew with content are no longer cropped.
+
+## 2026-03-09 (show all controls on screen)
+- Show all now reserves space on the left so draggers and \"...\" buttons for all visible blobs stay on screen when you hover each blob.
+
+## 2026-03-09 (merge on fused cue release)
+- Releasing (mouse up or finger lift) while the joined/fused merge cue is shown now merges the two blobs; previously merge required an even closer threshold.
+
+## 2026-03-09 (merge cue inner card bounds)
+- Merge cue outline now measures the blob card shape only (excludes hover controls like drag handle and "..." button); fused outline traces each blob's actual contour with concave bridge curves at the overlap zone.
+
+## 2026-03-09 (merge outline contours)
+- Merge outlines when overlapping now follow each blob's contour and form one continuous path with no discontinuities.
+
+## 2026-03-09 (raw switch no resize)
+- When switching to Raw, all blobs keep their current size: we now capture every blob's size from the DOM (not only blobs without stored size) so none resize.
+
+## 2026-03-09 (raw view fill)
+- Raw markdown view: textarea now fills the full blob card so text uses the whole blob instead of a small scrollable region.
+
+## 2026-03-09 (merge cue fixes)
+- Merge cues: dragging blob uses live position (with measured size) so its cue stays aligned with the card; fused shared outline appears when cue rects are within 12px, not only when overlapping.
+
+## 2026-03-09 (preview no scrollbars)
+- Preview mode: blob cards no longer use fixed height; height follows content so no scrollbars or empty vertical space.
+
+## 2026-03-09 (preferences sync on poll)
+- Preferences (theme, blobby color, etc.) now sync when polling the cloud so other tabs see changes without re-login.
+
+## 2026-03-09 (resize fit content)
+- Resize blobs to fit content: horizontal resize adjusts height (wider → shorter, narrower → taller); vertical resize adjusts width (taller → narrower, shorter → wider).
+
+## 2026-03-09 (deletion sync)
+- Blob deletions are synced via Supabase so other logged-in clients see deletions (poll applies remote deletions when cloud is ahead).
+
+## 2026-03-09 (tap to create)
+- Fixed tap on canvas no longer creating a blob (removed check that blocked create when focus had been in a blob).
+
+## 2026-03-09 (raw view size)
+- When switching to Markdown Raw, blob sizes are preserved (current size is captured from DOM so no blobs resize).
+
+## 2026-03-09 (show all fit)
+- Show all now fits the full bounds of every visible blob (uses actual blob width/height instead of a fixed small box) so none are cropped.
+
+## 2026-03-09 (show all robustness)
+- Show all button is now enabled whenever any blob is partially or fully off screen (derived from viewport and blob bounds).
+
+## 2026-03-09 (blob menu commands)
+- Blob \"...\" menu: Duplicate, Lock, Hide, Delete now take effect (data-popup-menu pointer-events, onPointerDown + onClick with dedupe, Hide uses onHide).
+
+## 2026-03-09 (blob proximity merge)
+- When two blobs are dragged close, a dynamic SVG boundary wraps both; when very close, release to merge the dragged blob's content into the other and remove the dragged blob.
+- Merge boundary is visual only (pointer-events: none) and does not affect selection or hover.
+
+## 2026-03-09 (merge cue states)
+- Merge cues: each blob gets a 12px-padded rounded rectangle; when cues overlap they fuse into one melted boundary.
+- Three states: separate cues, then fused/melted outline when dragged blob is close enough for cues to overlap.
+
+## 2026-03-09 (merge cue size)
+- Merge cues now follow each blob's actual rendered size (measured from the DOM) with 12px padding instead of default 280×200.
+
 ## 2026-03-08 (blob menu)
 - Move bullet up/down changed to Ctrl+↑/↓ (same on Windows and Mac) — safest cross-platform arrow shortcut with no OS, browser, or Electron intercept.
 - Fixed blob \"...\" menu: Duplicate, Lock, Hide, Delete work; popup layer no longer blocks canvas (portal container pointer-events: none, menu pointer-events: auto).
@@ -111,6 +264,17 @@
 - Sign-in no longer sends deployed users to localhost: OAuth redirect URL is rewritten to the current site when Supabase returns localhost.
 - Supabase dashboard: add https://blobapp.vercel.app and https://blobapp.vercel.app/auth/callback to Redirect URLs so post-login redirect stays on production.
 pp.vercel.app and https://blobapp.vercel.app/auth/callback to Redirect URLs so post-login redirect stays on production.
+
+## 2026-03-09
+- Merge boundary outline now extends leftward to include the drag handle and … button so controls no longer protrude outside the boundary during a drag-to-merge.
+- Replaced the organic fused merge boundary path (complex arc-tracing algorithm) with a clean single rounded-rect outline encompassing both blobs.
+- Removed ~130 lines of dead arc-tracing helper code from blob-boundary-path.ts.
+- Blobby word box now caps its height (min(260px, 40vh)) with vertical scroll so a long AI summary cannot cover the canvas.
+
+## 2026-03-09
+- Blobby output box: hover shows a subtle ring and a '...' button; clicking '...' opens a menu with a Copy option.
+- Blobby output box: scrollbar is now fully interactive (pointer events enabled on the word box).
+- Blobby output box: hovering over the output pauses the auto-hide timer so the text stays visible.
 
 ## 2026-03-08
 - Rebuilt all app icons (web, Android, iOS, Windows) from the new iridescent Blobby source image.

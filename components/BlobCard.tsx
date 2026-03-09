@@ -3,6 +3,7 @@
 import React, { useRef, useState, useCallback, useEffect, useLayoutEffect } from "react";
 import { createPortal } from "react-dom";
 import type { Blob, BlobLine, BlobMarkdownView } from "@/lib/types";
+import { DEFAULT_BLOB_W, DEFAULT_BLOB_H } from "@/lib/blob-constants";
 import {
   BLOB_CLIPBOARD_MIME,
   linesToHtml,
@@ -13,9 +14,59 @@ import { markdownToLines, linesToMarkdown } from "@/lib/blob-markdown";
 import { useBlobsContext } from "@/contexts/BlobsContext";
 import { useControlsPortal } from "@/contexts/ControlsPortalContext";
 import { usePopupPortal } from "@/contexts/PopupPortalContext";
+import {
+  BLOB_CLOSE_MENUS_EVENT,
+  dispatchCloseMenus,
+  type BlobCloseMenusDetail,
+} from "@/lib/menu-close-event";
 import styles from "./BlobCard.module.css";
 
 const BULLET_TEXT = "• ";
+
+/** Match markdown link [text](url). Captures: group 1 = link text, group 2 = url. */
+const MARKDOWN_LINK_REGEX = /\[([^\]]*)\]\(([^)]+)\)/g;
+
+type LineSegment = { type: "text"; value: string } | { type: "link"; text: string; url: string };
+
+function parseLineToSegments(lineText: string): LineSegment[] {
+  const segments: LineSegment[] = [];
+  let lastIndex = 0;
+  const re = new RegExp(MARKDOWN_LINK_REGEX.source, "g");
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(lineText)) !== null) {
+    if (m.index > lastIndex) {
+      segments.push({ type: "text", value: lineText.slice(lastIndex, m.index) });
+    }
+    segments.push({ type: "link", text: m[1], url: m[2] });
+    lastIndex = m.index + m[0].length;
+  }
+  if (lastIndex < lineText.length) {
+    segments.push({ type: "text", value: lineText.slice(lastIndex) });
+  }
+  if (segments.length === 0 && lineText.length > 0) return [{ type: "text", value: lineText }];
+  return segments;
+}
+
+/** Serialize a line's DOM content (text nodes + <a>) back to markdown so links round-trip. */
+function serializeLineContentToMarkdown(el: Element): string {
+  let s = "";
+  for (const node of el.childNodes) {
+    if (node.nodeType === Node.ELEMENT_NODE && (node as Element).tagName === "A") {
+      const a = node as HTMLAnchorElement;
+      const href = a.getAttribute("href");
+      if (href) s += `[${a.textContent ?? ""}](${href})`;
+      else s += a.textContent ?? "";
+    } else {
+      s += node.textContent ?? "";
+    }
+  }
+  return s.replace(/\u200b/g, "").trimEnd();
+}
+
+/** Clamp value to [min, max]. */
+function clamp(min: number, value: number, max: number): number {
+  return Math.max(min, Math.min(max, value));
+}
 
 /** Keys that commit one undo step (word boundary): space, punctuation, Enter, or delete-word. */
 function isWordBoundaryKey(key: string, ctrlOrMeta: boolean): boolean {
@@ -41,7 +92,7 @@ function readLinesFromContentEl(container: HTMLDivElement): BlobLine[] {
     const style = (div.getAttribute("data-style") as BlobLine["style"]) ?? "bullet";
     const bulletSpan = div.querySelector("[data-bullet]");
     const textEl = bulletSpan?.nextElementSibling ?? div;
-    const text = (textEl.textContent ?? "").replace(/\u200b/g, "").trimEnd();
+    const text = textEl ? serializeLineContentToMarkdown(textEl) : "";
     const indentRaw = div.getAttribute("data-indent");
     const indent = indentRaw != null ? Math.max(0, parseInt(indentRaw, 10) || 0) : 0;
     lines.push({
@@ -81,7 +132,28 @@ function buildContentFromLines(container: HTMLDivElement, lines: BlobLine[]) {
 
     const textSpan = document.createElement("span");
     textSpan.className = styles.lineText;
-    textSpan.textContent = line.text || "\u200b"; // zero-width space so line is focusable when empty
+    const segments = parseLineToSegments(line.text ?? "");
+    if (segments.length === 0) {
+      textSpan.textContent = line.text || "\u200b"; // zero-width space so line is focusable when empty
+    } else {
+      const hasLink = segments.some((s) => s.type === "link");
+      if (!hasLink) {
+        textSpan.textContent = line.text || "\u200b";
+      } else {
+        for (const seg of segments) {
+          if (seg.type === "text") {
+            textSpan.appendChild(document.createTextNode(seg.value));
+          } else {
+            const a = document.createElement("a");
+            a.href = seg.url;
+            a.target = "_blank";
+            a.rel = "noopener noreferrer";
+            a.textContent = seg.text;
+            textSpan.appendChild(a);
+          }
+        }
+      }
+    }
 
     div.appendChild(bullet);
     div.appendChild(textSpan);
@@ -142,14 +214,18 @@ function getTextOffsetIn(container: Node, target: Node, targetOffset: number): n
   return offset;
 }
 
-/** Move caret to immediately after the bullet of the first line (or the line containing the current selection). */
+/** Move caret to immediately after the bullet of the line containing the current selection (so we don't jump to line 0). */
 function moveCaretAfterBullet(container: HTMLDivElement) {
   const sel = window.getSelection();
-  if (!sel) return;
-  const lineDiv = container.querySelector<HTMLDivElement>("[data-line-index]");
-  if (!lineDiv) return;
-  const bulletSpan = lineDiv.querySelector("[data-bullet]");
-  const textSpan = bulletSpan?.nextElementSibling ?? lineDiv;
+  if (!sel || sel.rangeCount === 0) return;
+  const node = sel.anchorNode;
+  const startEl: Element | null =
+    node?.nodeType === Node.TEXT_NODE ? (node as Text).parentElement : (node as Element) ?? null;
+  const lineDiv = startEl?.closest<HTMLDivElement>("[data-line-index]");
+  const useLineDiv = lineDiv && lineDiv.parentElement === container ? lineDiv : container.querySelector<HTMLDivElement>("[data-line-index]");
+  if (!useLineDiv) return;
+  const bulletSpan = useLineDiv.querySelector("[data-bullet]");
+  const textSpan = bulletSpan?.nextElementSibling ?? useLineDiv;
   const target = textSpan.nodeType === Node.TEXT_NODE ? textSpan : textSpan.firstChild ?? textSpan;
   const range = document.createRange();
   range.setStart(target, 0);
@@ -306,8 +382,14 @@ export function BlobCard({
   onHide,
   onLock,
   onUnlock,
+  onDragStart: onDragStartProp,
+  onDragEnd: onDragEndProp,
   scale = 1,
+  pan = { x: 0, y: 0 },
+  blobbyBackerSizePx = 200,
   isSelected = false,
+  isPartOfMultiSelection = false,
+  onMoveSelected,
 }: {
   blob: Blob;
   blobMarkdownView?: BlobMarkdownView;
@@ -322,8 +404,17 @@ export function BlobCard({
   onHide?: () => void;
   onLock: () => void;
   onUnlock: () => void;
+  onDragStart?: (blobId: string) => void;
+  onDragEnd?: (blobId: string) => void;
   scale?: number;
+  /** For clamping controls to viewport and avoiding blobby. */
+  pan?: { x: number; y: number };
+  /** Blobby backer size in px (for avoiding that region when positioning controls). */
+  blobbyBackerSizePx?: number;
   isSelected?: boolean;
+  /** When true, dragging this blob's handle moves all selected blobs by the same delta. */
+  isPartOfMultiSelection?: boolean;
+  onMoveSelected?: (dx: number, dy: number) => void;
 }) {
   const { pushUndoSnapshot, incrementMenuOpen, decrementMenuOpen, dispatch } = useBlobsContext();
   const cardRef = useRef<HTMLDivElement>(null);
@@ -340,15 +431,26 @@ export function BlobCard({
   const hoverLeaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const [dropdownPosition, setDropdownPosition] = useState<{ top: number; left: number } | null>(null);
+  const [dropdownAdjust, setDropdownAdjust] = useState({ x: 0, y: 0 });
   const dragStart = useRef({ x: 0, y: 0, blobX: 0, blobY: 0 });
   const popupPortal = usePopupPortal();
+
+  const LINK_PREVIEW_HOVER_MS = 3000;
+  const linkPreviewTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const linkPreviewAnchorRef = useRef<{ url: string; anchorRect: DOMRect } | null>(null);
+  const linkPreviewContainerRef = useRef<HTMLDivElement | null>(null);
+  const [linkPreview, setLinkPreview] = useState<{
+    url: string;
+    imageUrl: string | null;
+    title: string | null;
+    anchorRect: { top: number; left: number; bottom: number; right: number };
+  } | null>(null);
+  const [linkPreviewPosition, setLinkPreviewPosition] = useState({ top: 0, left: 0 });
 
   const MIN_BLOB_W = 120;
   const MIN_BLOB_H = 80;
   const EDGE_THRESHOLD_SCREEN_W = 100;
   const EDGE_THRESHOLD_SCREEN_H = 60;
-  const DEFAULT_BLOB_W = 280;
-  const DEFAULT_BLOB_H = 200;
 
   const [resizingEdge, setResizingEdge] = useState<"n" | "e" | "s" | "w" | null>(null);
   const [resizeOverlay, setResizeOverlay] = useState<{ width: number; height: number; x: number; y: number } | null>(null);
@@ -360,13 +462,15 @@ export function BlobCard({
     startY: number;
     startBlobX: number;
     startBlobY: number;
-    aspectRatio: number;
   } | null>(null);
   const resizeOverlayRef = useRef<{ width: number; height: number; x: number; y: number } | null>(null);
+  const measureWrapRef = useRef<HTMLDivElement>(null);
+  const measureContentRef = useRef<HTMLDivElement>(null);
 
   useLayoutEffect(() => {
     if (!menuOpen) {
       setDropdownPosition(null);
+      setDropdownAdjust({ x: 0, y: 0 });
       return;
     }
     const rect = menuButtonRef.current?.getBoundingClientRect();
@@ -377,6 +481,125 @@ export function BlobCard({
       });
     }
   }, [menuOpen]);
+
+  /** Keep popup menu fully on screen; move the shortest distance necessary. */
+  const POPUP_PAD = 8;
+  useLayoutEffect(() => {
+    if (!menuOpen || !dropdownPosition) return;
+    const run = () => {
+      const menu = portaledMenuRef.current;
+      if (!menu) return;
+      const r = menu.getBoundingClientRect();
+      const vw = window.innerWidth;
+      const vh = window.innerHeight;
+      const adjX = clamp(POPUP_PAD - r.left, 0, vw - POPUP_PAD - r.right);
+      const adjY = clamp(POPUP_PAD - r.top, 0, vh - POPUP_PAD - r.bottom);
+      setDropdownAdjust((prev) =>
+        prev.x === adjX && prev.y === adjY ? prev : { x: adjX, y: adjY }
+      );
+    };
+    if (portaledMenuRef.current) {
+      run();
+    } else {
+      const raf = requestAnimationFrame(run);
+      return () => cancelAnimationFrame(raf);
+    }
+  }, [menuOpen, dropdownPosition]);
+
+  const handleContentMouseOver = useCallback(
+    (e: React.MouseEvent) => {
+      if (blobMarkdownView !== "preview") return;
+      const a = (e.target as Element).closest?.("a");
+      if (!a || !contentRef.current?.contains(a) || !(a instanceof HTMLAnchorElement)) return;
+      const href = a.href;
+      if (!href || (!href.startsWith("http://") && !href.startsWith("https://"))) return;
+      const rect = a.getBoundingClientRect();
+      if (linkPreviewTimerRef.current) clearTimeout(linkPreviewTimerRef.current);
+      linkPreviewAnchorRef.current = { url: href, anchorRect: rect };
+      linkPreviewTimerRef.current = setTimeout(() => {
+        linkPreviewTimerRef.current = null;
+        const anchor = linkPreviewAnchorRef.current;
+        if (!anchor) return;
+        fetch(`/api/link-preview?url=${encodeURIComponent(anchor.url)}`)
+          .then((r) => (r.ok ? r.json() : { imageUrl: null, title: null }))
+          .then((data: { imageUrl?: string | null; title?: string | null }) => {
+            setLinkPreview({
+              url: anchor.url,
+              imageUrl: data.imageUrl ?? null,
+              title: data.title ?? null,
+              anchorRect: {
+                top: anchor.anchorRect.top,
+                left: anchor.anchorRect.left,
+                bottom: anchor.anchorRect.bottom,
+                right: anchor.anchorRect.right,
+              },
+            });
+          })
+          .catch(() => {
+            setLinkPreview({
+              url: anchor.url,
+              imageUrl: null,
+              title: null,
+              anchorRect: {
+                top: anchor.anchorRect.top,
+                left: anchor.anchorRect.left,
+                bottom: anchor.anchorRect.bottom,
+                right: anchor.anchorRect.right,
+              },
+            });
+          });
+      }, LINK_PREVIEW_HOVER_MS);
+    },
+    [blobMarkdownView]
+  );
+
+  const handleContentMouseOut = useCallback(
+    (e: React.MouseEvent) => {
+      const related = e.relatedTarget as Node | null;
+      const enteringPreview = related && linkPreviewContainerRef.current?.contains(related);
+      if (enteringPreview) return;
+      if (linkPreviewTimerRef.current) {
+        clearTimeout(linkPreviewTimerRef.current);
+        linkPreviewTimerRef.current = null;
+      }
+      linkPreviewAnchorRef.current = null;
+      // Do not hide the preview here so the user can mouse from the link onto the thumbnail
+      // without it disappearing. Preview closes on its own onMouseLeave or document click.
+    },
+    []
+  );
+
+  useEffect(() => {
+    return () => {
+      if (linkPreviewTimerRef.current) clearTimeout(linkPreviewTimerRef.current);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (blobMarkdownView !== "preview") setLinkPreview(null);
+  }, [blobMarkdownView]);
+
+  const LINK_PREVIEW_W = 280;
+  const LINK_PREVIEW_H = 160;
+  const LINK_PREVIEW_GAP = 8;
+  const LINK_PREVIEW_HIT_PAD = 16;
+  useLayoutEffect(() => {
+    if (!linkPreview) return;
+    const { anchorRect } = linkPreview;
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+    let top = anchorRect.bottom + LINK_PREVIEW_GAP;
+    let left = anchorRect.left;
+    const pad = POPUP_PAD;
+    if (left + LINK_PREVIEW_W > vw - pad) left = vw - pad - LINK_PREVIEW_W;
+    if (left < pad) left = pad;
+    if (top + LINK_PREVIEW_H > vh - pad) {
+      top = anchorRect.top - LINK_PREVIEW_H - LINK_PREVIEW_GAP;
+      if (top < pad) top = pad;
+    }
+    if (top < pad) top = pad;
+    setLinkPreviewPosition({ top, left });
+  }, [linkPreview]);
 
   useEffect(() => {
     if (!menuOpen) return;
@@ -393,10 +616,25 @@ export function BlobCard({
   }, [menuOpen]);
 
   useEffect(() => {
-    const closeMenus = () => setMenuOpen(false);
-    window.addEventListener("blob:close-menus", closeMenus);
-    return () => window.removeEventListener("blob:close-menus", closeMenus);
-  }, []);
+    if (!linkPreview) return;
+    const close = (e: MouseEvent) => {
+      const target = e.target as Node;
+      const inPreview = linkPreviewContainerRef.current?.contains(target);
+      if (!inPreview) setLinkPreview(null);
+    };
+    document.addEventListener("click", close);
+    return () => document.removeEventListener("click", close);
+  }, [linkPreview]);
+
+  useEffect(() => {
+    const closeMenus = (e: Event) => {
+      const d = (e as CustomEvent<BlobCloseMenusDetail>).detail;
+      if (d?.exceptBlobMenu === blob.id) return;
+      setMenuOpen(false);
+    };
+    window.addEventListener(BLOB_CLOSE_MENUS_EVENT, closeMenus);
+    return () => window.removeEventListener(BLOB_CLOSE_MENUS_EVENT, closeMenus);
+  }, [blob.id]);
 
   useEffect(() => {
     if (!menuOpen) return;
@@ -442,6 +680,7 @@ export function BlobCard({
         const isMoveUp = (e.key === "ArrowUp" || e.key === "Up") && isMoveMod(e);
         const isMoveDown = (e.key === "ArrowDown" || e.key === "Down") && isMoveMod(e);
         if (isMoveUp || isMoveDown) {
+          pushUndoSnapshot();
           const handled = moveRawLine(ta, isMoveUp ? "up" : "down", onUpdateContent);
           if (handled) {
             e.preventDefault();
@@ -450,6 +689,7 @@ export function BlobCard({
           return;
         }
         if (e.key === "Tab") {
+          pushUndoSnapshot();
           e.preventDefault();
           e.stopPropagation();
           if (e.shiftKey) unindentRawLine(ta, onUpdateContent);
@@ -467,6 +707,7 @@ export function BlobCard({
           if (!info) return;
           const { currentIndex, cursorOffset } = info;
           if (isMoveUp && currentIndex > 0) {
+            pushUndoSnapshot();
             e.preventDefault();
             e.stopPropagation();
             const lines = readLinesFromContentEl(el);
@@ -476,6 +717,7 @@ export function BlobCard({
             placeCaretInLine(el, currentIndex - 1, cursorOffset);
             dispatchLines(readLinesFromContentEl(el));
           } else if (isMoveDown && currentIndex < el.children.length - 1) {
+            pushUndoSnapshot();
             e.preventDefault();
             e.stopPropagation();
             const lines = readLinesFromContentEl(el);
@@ -490,7 +732,7 @@ export function BlobCard({
     };
     document.addEventListener("keydown", onKeyDownCapture, true);
     return () => document.removeEventListener("keydown", onKeyDownCapture, true);
-  }, [blobMarkdownView, dispatchLines, onUpdateContent]);
+  }, [blobMarkdownView, dispatchLines, onUpdateContent, pushUndoSnapshot]);
 
   useEffect(() => {
     if (!autoFocus || !contentRef.current) return;
@@ -508,7 +750,7 @@ export function BlobCard({
   }, []);
 
   const handleMouseLeave = useCallback(() => {
-    hoverLeaveTimer.current = setTimeout(() => setIsHovered(false), 80);
+    hoverLeaveTimer.current = setTimeout(() => setIsHovered(false), 120);
   }, []);
 
   const handlePointerDown = useCallback(
@@ -516,7 +758,9 @@ export function BlobCard({
       if (blob.locked) return;
       if ((e.target as HTMLElement).closest("[data-drag-handle]")) {
         e.preventDefault();
+        dispatchCloseMenus();
         setIsDragging(true);
+        onDragStartProp?.(blob.id);
         dragStart.current = {
           x: e.clientX,
           y: e.clientY,
@@ -526,30 +770,32 @@ export function BlobCard({
         (e.target as HTMLElement).setPointerCapture?.(e.pointerId);
       }
     },
-    [blob.x, blob.y, blob.locked]
+    [blob.id, blob.x, blob.y, blob.locked, onDragStartProp]
   );
 
   const handlePointerMove = useCallback(
     (e: React.PointerEvent) => {
       if (!isDragging) return;
-      const dx = e.clientX - dragStart.current.x;
-      const dy = e.clientY - dragStart.current.y;
-      onPosition(
-        dragStart.current.blobX + dx / scale,
-        dragStart.current.blobY + dy / scale
-      );
+      const dx = (e.clientX - dragStart.current.x) / scale;
+      const dy = (e.clientY - dragStart.current.y) / scale;
+      if (isPartOfMultiSelection && onMoveSelected) {
+        onMoveSelected(dx, dy);
+      } else {
+        onPosition(dragStart.current.blobX + dx, dragStart.current.blobY + dy);
+      }
     },
-    [isDragging, onPosition, scale]
+    [isDragging, isPartOfMultiSelection, onMoveSelected, onPosition, scale]
   );
 
   const handlePointerUp = useCallback(
     (e: React.PointerEvent) => {
       if (isDragging) {
+        onDragEndProp?.(blob.id);
         (e.target as HTMLElement).releasePointerCapture?.(e.pointerId);
         setIsDragging(false);
       }
     },
-    [isDragging]
+    [blob.id, isDragging, onDragEndProp]
   );
 
   const effectiveX = resizeOverlay?.x ?? blob.x;
@@ -573,7 +819,6 @@ export function BlobCard({
       const h =
         blob.height ??
         (rect ? rect.height / scale : DEFAULT_BLOB_H);
-      const aspectRatio = w / h;
       resizeStartRef.current = {
         edge,
         startWidth: w,
@@ -582,7 +827,6 @@ export function BlobCard({
         startY: e.clientY,
         startBlobX: blob.x,
         startBlobY: blob.y,
-        aspectRatio,
       };
       setResizingEdge(edge);
       (e.target as HTMLElement).setPointerCapture?.(e.pointerId);
@@ -592,6 +836,40 @@ export function BlobCard({
 
   useEffect(() => {
     if (resizingEdge == null) return;
+    const wrapEl = measureWrapRef.current;
+    const contentEl = measureContentRef.current;
+
+    const getLines = (): BlobLine[] => {
+      if (blobMarkdownView === "preview" && contentRef.current) {
+        return readLinesFromContentEl(contentRef.current);
+      }
+      return markdownToLines(blob.content ?? "");
+    };
+
+    const measureContentHeightAtWidth = (worldWidth: number): number => {
+      if (!wrapEl || !contentEl) return resizeStartRef.current?.startHeight ?? DEFAULT_BLOB_H;
+      wrapEl.style.width = `${worldWidth}px`;
+      const lines = getLines();
+      buildContentFromLines(contentEl, lines.length > 0 ? lines : [{ text: "", style: "bullet" }]);
+      const heightPx = wrapEl.getBoundingClientRect().height;
+      return heightPx / scale;
+    };
+
+    const measureContentWidthAtHeight = (worldHeight: number): number => {
+      if (!wrapEl || !contentEl) return resizeStartRef.current?.startWidth ?? DEFAULT_BLOB_W;
+      let low = MIN_BLOB_W;
+      let high = 800;
+      while (low < high) {
+        const mid = Math.floor((low + high) / 2);
+        if (measureContentHeightAtWidth(mid) <= worldHeight) {
+          high = mid;
+        } else {
+          low = mid + 1;
+        }
+      }
+      return low;
+    };
+
     const onMove = (e: PointerEvent) => {
       const start = resizeStartRef.current;
       if (!start) return;
@@ -603,17 +881,17 @@ export function BlobCard({
       let y = start.startBlobY;
       if (start.edge === "e") {
         w = Math.max(MIN_BLOB_W, start.startWidth + dx);
-        h = w / start.aspectRatio;
+        h = Math.max(MIN_BLOB_H, measureContentHeightAtWidth(w));
       } else if (start.edge === "w") {
         w = Math.max(MIN_BLOB_W, start.startWidth - dx);
-        h = w / start.aspectRatio;
+        h = Math.max(MIN_BLOB_H, measureContentHeightAtWidth(w));
         x = start.startBlobX + (start.startWidth - w);
       } else if (start.edge === "s") {
         h = Math.max(MIN_BLOB_H, start.startHeight + dy);
-        w = h * start.aspectRatio;
+        w = Math.max(MIN_BLOB_W, measureContentWidthAtHeight(h));
       } else {
         h = Math.max(MIN_BLOB_H, start.startHeight - dy);
-        w = h * start.aspectRatio;
+        w = Math.max(MIN_BLOB_W, measureContentWidthAtHeight(h));
         y = start.startBlobY + (start.startHeight - h);
       }
       const next = { width: w, height: h, x, y };
@@ -649,7 +927,7 @@ export function BlobCard({
       document.removeEventListener("pointermove", onMove);
       document.removeEventListener("pointerup", onUp);
     };
-  }, [resizingEdge, blob.id, blob.x, blob.y, blob.width, blob.height, scale, onPosition, dispatch]);
+  }, [resizingEdge, blob.id, blob.x, blob.y, blob.width, blob.height, blob.content, blobMarkdownView, scale, onPosition, dispatch]);
 
   const handleInput = useCallback(() => {
     if (blob.locked) return;
@@ -708,6 +986,7 @@ export function BlobCard({
       const isMoveUp = (e.key === "ArrowUp" || e.key === "Up") && isMoveMod(e);
       const isMoveDown = (e.key === "ArrowDown" || e.key === "Down") && isMoveMod(e);
       if (isMoveUp && currentIndex > 0) {
+        pushUndoSnapshot();
         e.preventDefault();
         e.stopPropagation();
         const lines = readLinesFromContentEl(el);
@@ -719,6 +998,7 @@ export function BlobCard({
         return;
       }
       if (isMoveDown && currentIndex >= 0 && currentIndex < el.children.length - 1) {
+        pushUndoSnapshot();
         e.preventDefault();
         e.stopPropagation();
         const lines = readLinesFromContentEl(el);
@@ -731,6 +1011,7 @@ export function BlobCard({
       }
       if (e.key === "Tab") {
         if (currentIndex < 0) return;
+        pushUndoSnapshot();
         e.preventDefault();
         const lines = readLinesFromContentEl(el);
         const line = lines[currentIndex];
@@ -835,6 +1116,7 @@ export function BlobCard({
       }
       const el = contentRef.current;
       if (!el) return;
+      pushUndoSnapshot();
       const html = e.clipboardData.getData("text/html");
       const text = e.clipboardData.getData("text/plain");
       const blobData = e.clipboardData.getData(BLOB_CLIPBOARD_MIME);
@@ -891,8 +1173,13 @@ export function BlobCard({
       }
       dispatchLines(readLinesFromContentEl(el));
     },
-    [blob.locked, dispatchLines]
+    [blob.locked, dispatchLines, pushUndoSnapshot]
   );
+
+  const handleCut = useCallback(() => {
+    if (blob.locked) return;
+    pushUndoSnapshot();
+  }, [blob.locked, pushUndoSnapshot]);
 
   const handleCopy = useCallback(
     (e: React.ClipboardEvent) => {
@@ -919,6 +1206,27 @@ export function BlobCard({
     buildContentFromLines(el, list);
   }, [blob.id, blob.content, blobMarkdownView]);
 
+  /** In Raw mode, shrink blob height when content is deleted so we don't show empty space or an unnecessary scrollbar. */
+  const CARD_PADDING_VERTICAL_PX = 20;
+  useLayoutEffect(() => {
+    if (blobMarkdownView !== "raw" || blob.locked) return;
+    const ta = rawTextareaRef.current;
+    const currentH = blob.height ?? DEFAULT_BLOB_H;
+    if (!ta || currentH <= MIN_BLOB_H) return;
+    const contentHeightPx = CARD_PADDING_VERTICAL_PX + ta.scrollHeight;
+    const contentHeightWorld = contentHeightPx / scale;
+    if (contentHeightWorld < currentH && contentHeightWorld >= MIN_BLOB_H) {
+      dispatch({
+        type: "SET_BLOB_SIZE",
+        payload: {
+          id: blob.id,
+          width: blob.width ?? DEFAULT_BLOB_W,
+          height: Math.max(MIN_BLOB_H, contentHeightWorld),
+        },
+      });
+    }
+  }, [blob.id, blob.content, blob.height, blob.width, blob.locked, blobMarkdownView, scale, dispatch]);
+
   useEffect(() => {
     if (blobMarkdownView === "raw" && autoFocus && rawTextareaRef.current) {
       rawTextareaRef.current.focus();
@@ -933,6 +1241,17 @@ export function BlobCard({
 
   const portal = useControlsPortal();
 
+  const menuActionRef = useRef<{ at: number } | null>(null);
+  const runAndClose = (fn: () => void) => (e: React.PointerEvent | React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const now = Date.now();
+    if (menuActionRef.current && now - menuActionRef.current.at < 80) return;
+    menuActionRef.current = { at: now };
+    fn();
+    setMenuOpen(false);
+  };
+
   const blobMenuItems = (
     <>
       <button
@@ -940,12 +1259,24 @@ export function BlobCard({
         className={styles.blobMenuItem}
         role="menuitem"
         data-testid="blob-menu-duplicate"
-        onClick={() => {
-          onDuplicate();
-          setMenuOpen(false);
-        }}
+        onPointerDown={runAndClose(onDuplicate)}
+        onClick={runAndClose(onDuplicate)}
       >
         Duplicate
+      </button>
+      <button
+        type="button"
+        className={styles.blobMenuItem}
+        role="menuitem"
+        data-testid="blob-menu-copy-all"
+        onPointerDown={runAndClose(() => {
+          void navigator.clipboard.writeText(blob.content ?? "");
+        })}
+        onClick={runAndClose(() => {
+          void navigator.clipboard.writeText(blob.content ?? "");
+        })}
+      >
+        Copy all
       </button>
       {blob.locked ? (
         <button
@@ -953,10 +1284,8 @@ export function BlobCard({
           className={styles.blobMenuItem}
           role="menuitem"
           data-testid="blob-menu-unlock"
-          onClick={() => {
-            onUnlock();
-            setMenuOpen(false);
-          }}
+          onPointerDown={runAndClose(onUnlock)}
+          onClick={runAndClose(onUnlock)}
         >
           Unlock
         </button>
@@ -966,10 +1295,8 @@ export function BlobCard({
           className={styles.blobMenuItem}
           role="menuitem"
           data-testid="blob-menu-lock"
-          onClick={() => {
-            onLock();
-            setMenuOpen(false);
-          }}
+          onPointerDown={runAndClose(onLock)}
+          onClick={runAndClose(onLock)}
         >
           Lock
         </button>
@@ -979,12 +1306,8 @@ export function BlobCard({
         className={styles.blobMenuItem}
         role="menuitem"
         data-testid="blob-menu-hide"
-        onClick={(e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          dispatch({ type: "SET_HIDDEN", payload: { ids: [blob.id], hidden: true } });
-          setMenuOpen(false);
-        }}
+        onPointerDown={runAndClose(() => onHide?.())}
+        onClick={runAndClose(() => onHide?.())}
       >
         Hide
       </button>
@@ -993,23 +1316,65 @@ export function BlobCard({
         className={`${styles.blobMenuItem} ${styles.blobMenuItemDanger}`}
         role="menuitem"
         data-testid="blob-menu-delete"
-        onClick={() => {
-          onDelete();
-          setMenuOpen(false);
-        }}
+        onPointerDown={runAndClose(onDelete)}
+        onClick={runAndClose(onDelete)}
       >
         Delete
       </button>
     </>
   );
 
+  /* When portaled, the wrapper has no in-flow content so it collapses to 0×0 and never
+   * receives mouse enter. Give it explicit size so hover is kept when moving from
+   * dragger to "…" button (avoids button disappearing from hit-region / leave timer).
+   * Clamp position so controls stay within viewport and avoid the blobby + backer area. */
+  const WRAPPER_SCREEN_W = SCREEN_GAP + CONTROLS_COLUMN_WIDTH + 24;
+  const WRAPPER_SCREEN_H = 100;
+  const VIEWPORT_PAD = 8;
+  let portaledLeft = effectiveX - (SCREEN_GAP + CONTROLS_COLUMN_WIDTH) / scale;
+  let portaledTop = effectiveY;
+  if (
+    typeof window !== "undefined" &&
+    portal?.portalReady &&
+    scale > 0
+  ) {
+    const screenLeft = portaledLeft * scale + pan.x;
+    const screenTop = portaledTop * scale + pan.y;
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+    const blobbyTop = vh - 74 - blobbyBackerSizePx / 2;
+    const topLimit = Math.min(
+      vh - VIEWPORT_PAD - WRAPPER_SCREEN_H,
+      blobbyTop - WRAPPER_SCREEN_H - VIEWPORT_PAD
+    );
+    const screenLeftClamped = Math.max(
+      VIEWPORT_PAD,
+      Math.min(vw - VIEWPORT_PAD - WRAPPER_SCREEN_W, screenLeft)
+    );
+    const screenTopClamped = Math.max(
+      VIEWPORT_PAD,
+      Math.min(topLimit, screenTop)
+    );
+    portaledLeft = (screenLeftClamped - pan.x) / scale;
+    portaledTop = (screenTopClamped - pan.y) / scale;
+  }
+  const portaledWrapperStyle: React.CSSProperties = portal?.portalReady
+    ? {
+        left: portaledLeft,
+        top: portaledTop,
+        width: (SCREEN_GAP + CONTROLS_COLUMN_WIDTH + 24) / scale,
+        height: 100 / scale,
+      }
+    : { left: effectiveX, top: effectiveY };
+  const portaledColumnLeft = portal?.portalReady ? 0 : -(SCREEN_GAP + CONTROLS_COLUMN_WIDTH) / scale;
+
   const controlsFragment = (
     <div
       className={styles.wrapper}
       data-blob-controls
       data-dragging={isDragging ? "" : undefined}
-      data-hovered={isHovered ? "" : undefined}
-      style={{ left: effectiveX, top: effectiveY }}
+      data-hovered={isHovered && !isPartOfMultiSelection ? "" : undefined}
+      style={portaledWrapperStyle}
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}
       onPointerUp={handlePointerUp}
@@ -1020,7 +1385,7 @@ export function BlobCard({
       <div
         className={styles.controlsColumn}
         style={{
-          left: -(SCREEN_GAP + CONTROLS_COLUMN_WIDTH) / scale,
+          left: portaledColumnLeft,
           transform: `scale(${invScale})`,
           transformOrigin: "100% 0",
         }}
@@ -1037,7 +1402,12 @@ export function BlobCard({
             ⋮⋮
           </div>
         </div>
-        <div className={styles.menuWrap} ref={menuRef}>
+        <div
+          className={`${styles.menuWrap} ${isDragging ? styles.menuWrapHidden : ""}`}
+          ref={menuRef}
+          onMouseEnter={handleMouseEnter}
+          onMouseLeave={handleMouseLeave}
+        >
         <button
           ref={menuButtonRef}
           type="button"
@@ -1046,8 +1416,14 @@ export function BlobCard({
           onClick={(e) => {
             e.preventDefault();
             e.stopPropagation();
-            setMenuOpen((o) => !o);
+            if (menuOpen) {
+              setMenuOpen(false);
+            } else {
+              dispatchCloseMenus({ exceptBlobMenu: blob.id });
+              setMenuOpen(true);
+            }
           }}
+          onMouseEnter={handleMouseEnter}
           aria-label="Blob options"
           aria-expanded={menuOpen}
           aria-haspopup="menu"
@@ -1082,9 +1458,13 @@ export function BlobCard({
         data-selected={isSelected || undefined}
         data-locked={blob.locked || undefined}
         style={
-          effectiveW != null && effectiveH != null
-            ? { width: effectiveW, height: effectiveH, minWidth: effectiveW, maxWidth: effectiveW, minHeight: effectiveH }
-            : undefined
+          blobMarkdownView === "preview"
+            ? effectiveW != null
+              ? { width: effectiveW, minWidth: effectiveW, maxWidth: effectiveW }
+              : undefined
+            : effectiveW != null && effectiveH != null
+              ? { width: effectiveW, height: effectiveH, minWidth: effectiveW, maxWidth: effectiveW, minHeight: effectiveH }
+              : undefined
         }
       >
         {!blob.locked && (
@@ -1127,9 +1507,6 @@ export function BlobCard({
           <textarea
             ref={rawTextareaRef}
             className={styles.contentRaw}
-            style={{
-              minHeight: `${Math.max(1, (blob.content ?? "").split(/\n/).length) * 1.5}em`,
-            }}
             data-testid="blob-content"
             value={blob.content ?? ""}
             onChange={(e) => onUpdateContent?.(e.target.value)}
@@ -1154,55 +1531,163 @@ export function BlobCard({
             onFocus={handleFocus}
             onBlur={handleBlur}
             onPaste={handlePaste}
+            onCut={handleCut}
             onCopy={handleCopy}
+            onMouseOver={handleContentMouseOver}
+            onMouseOut={handleContentMouseOut}
+            onPointerDown={(e) => {
+              const a = (e.target as Node).nodeType === Node.ELEMENT_NODE && (e.target as Element).closest("a");
+              if (a instanceof HTMLAnchorElement && a.href) {
+                e.preventDefault();
+                e.stopPropagation();
+              }
+            }}
+            onClick={(e) => {
+              const a = (e.target as Node).nodeType === Node.ELEMENT_NODE && (e.target as Element).closest("a");
+              if (a instanceof HTMLAnchorElement && a.href) {
+                e.preventDefault();
+                e.stopPropagation();
+                window.open(a.href, "_blank", "noopener,noreferrer");
+              }
+            }}
           />
         )}
       </div>
     </div>
   );
 
-  const portaledDropdown =
-    menuOpen &&
-    dropdownPosition &&
+  const portaledPopupContent =
     popupPortal?.portalReady &&
     popupPortal.portalRef.current &&
+    (menuOpen || linkPreview) &&
     createPortal(
-      <div
-        ref={portaledMenuRef}
-        className={styles.blobMenu}
-        role="menu"
-        style={{
-          position: "fixed",
-          top: dropdownPosition.top,
-          left: dropdownPosition.left,
-          width: "max-content",
-          transform: "translateX(-100%)",
-        }}
-      >
-        {blobMenuItems}
-      </div>,
+      <>
+        {menuOpen && dropdownPosition && (
+          <div
+            ref={portaledMenuRef}
+            className={styles.blobMenu}
+            role="menu"
+            data-popup-menu
+            style={{
+              position: "fixed",
+              top: dropdownPosition.top + dropdownAdjust.y,
+              left: dropdownPosition.left + dropdownAdjust.x,
+              width: "max-content",
+              transform: "translateX(-100%)",
+            }}
+          >
+            {blobMenuItems}
+          </div>
+        )}
+        {linkPreview && (
+          <div
+            ref={linkPreviewContainerRef}
+            data-link-preview
+            className={styles.linkPreviewWrap}
+            style={{
+              position: "fixed",
+              top: linkPreviewPosition.top - LINK_PREVIEW_HIT_PAD,
+              left: linkPreviewPosition.left - LINK_PREVIEW_HIT_PAD,
+              width: LINK_PREVIEW_W + LINK_PREVIEW_HIT_PAD * 2,
+              minHeight: LINK_PREVIEW_H + 48 + LINK_PREVIEW_HIT_PAD * 2,
+            }}
+            onMouseLeave={() => setLinkPreview(null)}
+          >
+            <div
+              className={styles.linkPreview}
+              style={{
+                position: "absolute",
+                top: LINK_PREVIEW_HIT_PAD,
+                left: LINK_PREVIEW_HIT_PAD,
+                width: LINK_PREVIEW_W,
+                minHeight: LINK_PREVIEW_H,
+              }}
+              onPointerDown={(e) => {
+                if (e.button !== 0) return;
+                e.preventDefault();
+                e.stopPropagation();
+                window.open(linkPreview.url, "_blank", "noopener,noreferrer");
+                setLinkPreview(null);
+              }}
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                window.open(linkPreview.url, "_blank", "noopener,noreferrer");
+                setLinkPreview(null);
+              }}
+              role="button"
+              tabIndex={0}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  window.open(linkPreview.url, "_blank", "noopener,noreferrer");
+                  setLinkPreview(null);
+                }
+              }}
+              aria-label={`Preview: ${linkPreview.title ?? linkPreview.url}`}
+            >
+              {linkPreview.imageUrl ? (
+                <img
+                  src={linkPreview.imageUrl}
+                  alt=""
+                  className={styles.linkPreviewImage}
+                />
+              ) : (
+                <div className={styles.linkPreviewPlaceholder} />
+              )}
+              {(linkPreview.title || linkPreview.url) && (
+                <div className={styles.linkPreviewTitle}>
+                  {linkPreview.title ?? linkPreview.url}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+      </>,
       popupPortal.portalRef.current
     );
+
+  const measureEl = (
+    <div
+      ref={measureWrapRef}
+      className={styles.card}
+      aria-hidden
+      data-resize-measure
+      style={{
+        position: "absolute",
+        left: -9999,
+        top: 0,
+        visibility: "hidden",
+        width: 1,
+        minWidth: 0,
+        maxWidth: "none",
+      }}
+    >
+      <div ref={measureContentRef} className={styles.content} />
+    </div>
+  );
 
   if (portal?.portalReady && portal.portalRef.current) {
     return (
       <>
         {cardBody}
+        {measureEl}
         {createPortal(controlsFragment, portal.portalRef.current)}
-        {portaledDropdown}
+        {portaledPopupContent}
       </>
     );
   }
 
   return (
     <>
+      {measureEl}
       <div
         ref={cardRef}
         data-blob-card
         data-blob-id={blob.id}
         data-testid="blob-card"
         data-dragging={isDragging ? "" : undefined}
-        data-hovered={isHovered ? "" : undefined}
+        data-hovered={isHovered && !isPartOfMultiSelection ? "" : undefined}
         className={styles.wrapper}
         style={{ left: effectiveX, top: effectiveY }}
         onPointerDown={handlePointerDown}
@@ -1226,7 +1711,12 @@ export function BlobCard({
               ⋮⋮
             </div>
           </div>
-          <div className={styles.menuWrap} ref={menuRef}>
+          <div
+            className={`${styles.menuWrap} ${isDragging ? styles.menuWrapHidden : ""}`}
+            ref={menuRef}
+            onMouseEnter={handleMouseEnter}
+            onMouseLeave={handleMouseLeave}
+          >
             <button
               ref={menuButtonRef}
               type="button"
@@ -1235,8 +1725,14 @@ export function BlobCard({
               onClick={(e) => {
                 e.preventDefault();
                 e.stopPropagation();
-                setMenuOpen((o) => !o);
+                if (menuOpen) {
+                  setMenuOpen(false);
+                } else {
+                  dispatchCloseMenus({ exceptBlobMenu: blob.id });
+                  setMenuOpen(true);
+                }
               }}
+              onMouseEnter={handleMouseEnter}
               aria-label="Blob options"
               aria-expanded={menuOpen}
               aria-haspopup="menu"
@@ -1257,9 +1753,13 @@ export function BlobCard({
           data-selected={isSelected || undefined}
           data-locked={blob.locked || undefined}
           style={
-            effectiveW != null && effectiveH != null
-              ? { width: effectiveW, height: effectiveH, minWidth: effectiveW, maxWidth: effectiveW, minHeight: effectiveH }
-              : undefined
+            blobMarkdownView === "preview"
+              ? effectiveW != null
+                ? { width: effectiveW, minWidth: effectiveW, maxWidth: effectiveW }
+                : undefined
+              : effectiveW != null && effectiveH != null
+                ? { width: effectiveW, height: effectiveH, minWidth: effectiveW, maxWidth: effectiveW, minHeight: effectiveH }
+                : undefined
           }
         >
           {!blob.locked && (
@@ -1299,13 +1799,10 @@ export function BlobCard({
             </>
           )}
           {blobMarkdownView === "raw" ? (
-            <textarea
-              ref={rawTextareaRef}
-              className={styles.contentRaw}
-              style={{
-                minHeight: `${Math.max(1, (blob.content ?? "").split(/\n/).length) * 1.5}em`,
-              }}
-              data-testid="blob-content"
+          <textarea
+            ref={rawTextareaRef}
+            className={styles.contentRaw}
+            data-testid="blob-content"
               value={blob.content ?? ""}
               onChange={(e) => onUpdateContent?.(e.target.value)}
               onFocus={(e) => {
@@ -1329,12 +1826,13 @@ export function BlobCard({
               onFocus={handleFocus}
               onBlur={handleBlur}
               onPaste={handlePaste}
+              onCut={handleCut}
               onCopy={handleCopy}
             />
           )}
         </div>
       </div>
-      {portaledDropdown}
+      {portaledPopupContent}
     </>
   );
 }

@@ -32,6 +32,16 @@ export function savePreferences(prefs: Preferences): void {
   }
 }
 
+/** Clear preferences from localStorage (call when logged in so we don't leave data on device). */
+export function clearPreferences(): void {
+  if (typeof window === "undefined") return;
+  try {
+    localStorage.removeItem(BLOB_PREFERENCES_KEY);
+  } catch {
+    // ignore
+  }
+}
+
 /** Merge cloud preferences into current; returns new Preferences. Used when loading from account. */
 export function mergeCloudPreferences(
   current: Preferences,

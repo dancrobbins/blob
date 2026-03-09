@@ -2,9 +2,11 @@
 "use strict";
 
 const { execSync, spawn } = require("child_process");
+const fs = require("fs");
 const path = require("path");
 
 const root = path.join(__dirname, "..");
+const nextDir = path.join(root, ".next");
 
 function isPortInUse(port) {
   try {
@@ -47,11 +49,19 @@ const PORT = 3000;
 const devAlreadyRunning = isPortInUse(PORT);
 
 if (devAlreadyRunning) {
-  // Dev server already on 3000: build only, do not kill or start. Use restartall for a full restart.
-  console.log(`Dev server already running on port ${PORT}. Building only (no restart).`);
+  // Dev server already on 3000: clear .next, build, then restart server so it serves the new build.
+  // (If we only built and left the server running, it would keep serving the old build and the app would look broken.)
+  console.log(`Dev server already running on port ${PORT}. Clearing cache, building, then restarting server.`);
+  try {
+    fs.rmSync(nextDir, { recursive: true, force: true });
+  } catch (_) {}
   console.log("Building app...");
   execSync("npm run build", { cwd: root, stdio: "inherit" });
-  console.log("Build complete. Existing dev server unchanged.");
+  killPort(PORT);
+  execSync(`node -e "setTimeout(()=>{},1200)"`, { cwd: root, stdio: "ignore", windowsHide: true });
+  const dev = spawn("npm", ["run", "dev"], { cwd: root, stdio: "ignore", detached: true, shell: true });
+  dev.unref();
+  console.log("Dev server restarted on port 3000.");
 } else {
   // No server on 3000: kill anything on 3000–3003, build, then start.
   const NEXT_PORTS = [3000, 3001, 3002, 3003];

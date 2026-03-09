@@ -153,3 +153,11 @@ export function markdownToPlainText(md: string): string {
   const lines = markdownToLines(md);
   return lines.map((l) => l.text).join("\n");
 }
+
+/** True if blob has no user-created text (empty, whitespace-only, or only list markers like "- "). */
+export function isBlobContentEmpty(content: string | undefined): boolean {
+  const s = (content ?? "").trim();
+  if (!s) return true;
+  const lines = markdownToLines(content ?? "");
+  return lines.every((line) => !(line.text ?? "").trim());
+}

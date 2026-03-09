@@ -1,8 +1,6 @@
 {
   "version": "1.0.0",
   "updates": [
-    "Move bullet up/down changed to Ctrl+↑/↓ (same on Windows and Mac) — safest cross-platform arrow shortcut with no OS, browser, or Electron intercept.",
-    "Fixed blob \"...\" menu: Duplicate, Lock, Hide, Delete work; popup layer no longer blocks canvas (portal container pointer-events: none, menu pointer-events: auto).",
-    "Removed pages directory so build no longer fails with _document or pages-manifest errors; app is App Router only."
+    "Multi-select \"…\" button now uses the same theme as blob controls (dark background in dark theme)."
   ]
 }

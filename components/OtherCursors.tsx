@@ -4,8 +4,6 @@ import React from "react";
 import type { OtherPresence } from "@/contexts/PresenceContext";
 import styles from "./OtherCursors.module.css";
 
-const HEADER_HEIGHT = 52;
-
 function worldToScreen(
   worldX: number,
   worldY: number,
@@ -15,7 +13,7 @@ function worldToScreen(
 ) {
   return {
     x: worldX * scale + panX,
-    y: worldY * scale + panY + HEADER_HEIGHT,
+    y: worldY * scale + panY,
   };
 }
 

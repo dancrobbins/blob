@@ -3,7 +3,12 @@
 import React, { useState, useRef, useEffect } from "react";
 import { useBlobsContext } from "@/contexts/BlobsContext";
 import { APP_VERSION, BUILD_TIME, BUILD_UPDATES } from "@/lib/constants";
-import type { BuildInfo } from "@/lib/types";
+import {
+  BLOB_CLOSE_MENUS_EVENT,
+  dispatchCloseMenus,
+  type BlobCloseMenusDetail,
+} from "@/lib/menu-close-event";
+import type { BuildInfo, BlobMarkdownView } from "@/lib/types";
 import { supabase } from "@/lib/supabase";
 import styles from "./Header.module.css";
 
@@ -12,13 +17,27 @@ export function Header({
   onUnhideAll,
   hasLockedBlobs,
   onUnlockAll,
-  canShowAll = true,
+  onBeforeBlobViewChange,
+  canSelectAll = false,
+  onSelectAll,
+  canDeselectAll = false,
+  onDeselectAll,
+  canZoomToSelection = false,
 }: {
   hasHiddenBlobs?: boolean;
   onUnhideAll?: () => void;
   hasLockedBlobs?: boolean;
   onUnlockAll?: () => void;
-  canShowAll?: boolean;
+  /** Called before switching blob text view (Raw/Preview). Use to e.g. capture current blob sizes so they don’t change. */
+  onBeforeBlobViewChange?: (newView: BlobMarkdownView) => void;
+  /** Enable "Select all" when there are visible blobs and not all are selected. */
+  canSelectAll?: boolean;
+  onSelectAll?: () => void;
+  /** Enable "Deselect all" when any blobs are selected. */
+  canDeselectAll?: boolean;
+  onDeselectAll?: () => void;
+  /** Enable "Zoom to selection" when one or more blobs are selected. */
+  canZoomToSelection?: boolean;
 }) {
   const { preferences, setPreferences, userId, incrementMenuOpen, decrementMenuOpen, undo, redo, canUndo, canRedo } = useBlobsContext();
   const [menuOpen, setMenuOpen] = useState(false);
@@ -39,13 +58,14 @@ export function Header({
   }, []);
 
   useEffect(() => {
-    const closeMenus = () => {
-      setMenuOpen(false);
-      setAccountOpen(false);
+    const closeMenus = (e: Event) => {
+      const d = (e as CustomEvent<BlobCloseMenusDetail>).detail;
+      if (!d?.exceptHeader) setMenuOpen(false);
+      if (!d?.exceptAccount) setAccountOpen(false);
       setBuildTooltipOpen(false);
     };
-    window.addEventListener("blob:close-menus", closeMenus);
-    return () => window.removeEventListener("blob:close-menus", closeMenus);
+    window.addEventListener(BLOB_CLOSE_MENUS_EVENT, closeMenus);
+    return () => window.removeEventListener(BLOB_CLOSE_MENUS_EVENT, closeMenus);
   }, []);
   const [userAvatar, setUserAvatar] = useState<string | null>(null);
   const [signInError, setSignInError] = useState<string | null>(null);
@@ -205,6 +225,7 @@ export function Header({
             clearTimeout(menuCloseTimeoutRef.current);
             menuCloseTimeoutRef.current = null;
           }
+          dispatchCloseMenus({ exceptHeader: true });
           setMenuOpen(true);
         }}
         onMouseLeave={() => {
@@ -218,7 +239,13 @@ export function Header({
           type="button"
           className={styles.mainMenu}
           data-testid="main-menu"
-          onClick={() => setMenuOpen((o) => !o)}
+          onClick={() => {
+            setMenuOpen((o) => {
+              if (o) return false;
+              dispatchCloseMenus({ exceptHeader: true });
+              return true;
+            });
+          }}
           aria-label="Open Main menu"
           aria-expanded={menuOpen}
         >
@@ -265,6 +292,63 @@ export function Header({
                     </svg>
                     Redo
                   </span>
+                </button>
+              </div>
+            </div>
+            <div className={styles.menuSection}>
+              <button
+                type="button"
+                className={styles.menuAction}
+                data-testid="zoom-to-fit"
+                onClick={() => {
+                  setMenuOpen(false);
+                  window.dispatchEvent(new CustomEvent("blob:zoom-to-fit"));
+                }}
+              >
+                Zoom to fit
+              </button>
+            </div>
+            <div className={styles.menuSection}>
+              <button
+                type="button"
+                className={styles.menuAction}
+                data-testid="zoom-to-selection"
+                disabled={!canZoomToSelection}
+                onClick={() => {
+                  setMenuOpen(false);
+                  window.dispatchEvent(new CustomEvent("blob:zoom-to-selection"));
+                }}
+              >
+                Zoom to selection
+              </button>
+            </div>
+            <div className={styles.menuSection}>
+              <div className={styles.menuActionRow}>
+                <button
+                  type="button"
+                  className={styles.menuAction}
+                  data-testid="select-all"
+                  disabled={!canSelectAll}
+                  onClick={() => {
+                    onSelectAll?.();
+                    setMenuOpen(false);
+                  }}
+                  aria-label="Select all"
+                >
+                  Select all
+                </button>
+                <button
+                  type="button"
+                  className={styles.menuAction}
+                  data-testid="deselect-all"
+                  disabled={!canDeselectAll}
+                  onClick={() => {
+                    onDeselectAll?.();
+                    setMenuOpen(false);
+                  }}
+                  aria-label="Deselect all"
+                >
+                  Deselect all
                 </button>
               </div>
             </div>
@@ -372,10 +456,13 @@ export function Header({
                   role="tab"
                   aria-selected={preferences.blobMarkdownView === "raw"}
                   className={styles.themeTab}
-                  data-testid="blob-view-raw"
-                  onClick={() => setPreferences((p) => ({ ...p, blobMarkdownView: "raw" }))}
+                  data-testid="blob-view-markdown"
+                  onClick={() => {
+                    onBeforeBlobViewChange?.("raw");
+                    setPreferences((p) => ({ ...p, blobMarkdownView: "raw" }));
+                  }}
                 >
-                  Raw
+                  Markdown
                 </button>
                 <button
                   type="button"
@@ -383,7 +470,10 @@ export function Header({
                   aria-selected={preferences.blobMarkdownView === "preview"}
                   className={styles.themeTab}
                   data-testid="blob-view-preview"
-                  onClick={() => setPreferences((p) => ({ ...p, blobMarkdownView: "preview" }))}
+                  onClick={() => {
+                  onBeforeBlobViewChange?.("preview");
+                  setPreferences((p) => ({ ...p, blobMarkdownView: "preview" }));
+                }}
                 >
                   Preview
                 </button>
@@ -415,20 +505,6 @@ export function Header({
                 }}
               >
                 Unlock all
-              </button>
-            </div>
-            <div className={styles.menuSection}>
-              <button
-                type="button"
-                className={styles.menuAction}
-                data-testid="show-all"
-                disabled={!canShowAll}
-                onClick={() => {
-                  setMenuOpen(false);
-                  window.dispatchEvent(new CustomEvent("blob:show-all"));
-                }}
-              >
-                Show all
               </button>
             </div>
             <div className={styles.menuSection}>
@@ -480,7 +556,13 @@ export function Header({
           type="button"
           className={styles.accountBubble}
           data-testid="account-button"
-          onClick={() => setAccountOpen((o) => !o)}
+          onClick={() => {
+            setAccountOpen((o) => {
+              if (o) return false;
+              dispatchCloseMenus({ exceptAccount: true });
+              return true;
+            });
+          }}
           aria-label="Account"
           aria-expanded={accountOpen}
         >

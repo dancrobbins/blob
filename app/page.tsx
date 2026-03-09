@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useCallback, useRef, useState, useEffect } from "react";
+import React, { useCallback, useLayoutEffect, useRef, useState, useEffect } from "react";
 import { Header } from "@/components/Header";
 import { Blobby } from "@/components/Blobby";
 import { BlobbyWordBox } from "@/components/BlobbyWordBox";
@@ -12,22 +12,39 @@ import {
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { useBlobsContext } from "@/contexts/BlobsContext";
 import { usePresence } from "@/contexts/PresenceContext";
+import { getLastBlobbyLogEntry } from "@/lib/persistence";
 import { OtherCursors } from "@/components/OtherCursors";
 import { blobToPlainText } from "@/lib/blob-lines";
-import { linesToMarkdown } from "@/lib/blob-markdown";
+import { linesToMarkdown, isBlobContentEmpty } from "@/lib/blob-markdown";
+import { getBlobBounds, SHOW_ALL_CONTROLS_LEFT_PX } from "@/lib/blob-constants";
+import { dispatchCloseMenus } from "@/lib/menu-close-event";
+import { gapBetweenRects, getMergeCueRect, MERGE_CUE_PADDING } from "@/lib/blob-boundary-path";
+import { BlobBoundaryOverlay } from "@/components/BlobBoundaryOverlay";
 import { ControlsPortalProvider, useControlsPortal } from "@/contexts/ControlsPortalContext";
 import { PopupPortalProvider, usePopupPortal } from "@/contexts/PopupPortalContext";
 import styles from "./page.module.css";
 
 const BLOBBY_BACKER_FILE = "blobby backer L.svg";
 
-function BlobbyBacker({ sizePx, onTap }: { sizePx: number; onTap: () => void }) {
+function BlobbyBacker({
+  sizePx,
+  onTap,
+  onPointerEnter,
+  onPointerLeave,
+}: {
+  sizePx: number;
+  onTap: () => void;
+  onPointerEnter?: () => void;
+  onPointerLeave?: () => void;
+}) {
   return (
     <button
       type="button"
       aria-label="Summarize blobs"
       data-blobby-area
       onClick={onTap}
+      onPointerEnter={onPointerEnter}
+      onPointerLeave={onPointerLeave}
       style={{
         position: "fixed",
         left: "50%",
@@ -66,11 +83,10 @@ const HOLD_DELAY_MS = 220;
 const MIN_SCALE = 0.25;
 const MAX_SCALE = 3;
 const WHEEL_ZOOM_SENSITIVITY = 0.002;
-const HEADER_HEIGHT = 52;
-/** Approximate card size in world coords for "Show all" bounds. */
-const CARD_WIDTH = 250;
-const CARD_HEIGHT = 80;
 const SHOW_ALL_PADDING = 48;
+
+const CLOSE_THRESHOLD = 80;
+const VERY_CLOSE_THRESHOLD = 24;
 
 type Bounds = { left: number; top: number; width: number; height: number };
 
@@ -115,12 +131,12 @@ function screenToWorld(
 ) {
   return {
     x: (screenX - panX) / s,
-    y: (screenY - HEADER_HEIGHT - panY) / s,
+    y: (screenY - panY) / s,
   };
 }
 
 export default function Home() {
-  const { blobs, dispatch, anyMenuOpenRef, undo, redo, canUndo, canRedo, preferences } = useBlobsContext();
+  const { blobs, dispatch, anyMenuOpenRef, undo, redo, canUndo, canRedo, preferences, appendBlobbyLog, blobbyLog, initialCameraPosition, clearInitialCamera, persistCamera } = useBlobsContext();
   const { updateLocalCursor, otherPresences } = usePresence();
   const canvasRef = useRef<HTMLDivElement>(null);
   const canvasInnerRef = useRef<HTMLDivElement>(null);
@@ -138,9 +154,13 @@ export default function Home() {
   /** Selection count at pointer down; used to clear selection on tap without adding a blob. */
   const selectedIdsCountRef = useRef(0);
   const selectedIdsRef = useRef<string[]>([]);
+  const visibleBlobsRef = useRef<typeof blobs>([]);
+  const blobsRef = useRef(blobs);
+  const multiDragStartPositionsRef = useRef<Record<string, { x: number; y: number }> | null>(null);
+  const multiDragSelectedIdsRef = useRef<string[] | null>(null);
+  /** Single-blob drag start position for undo merge (restore source blob here). */
+  const mergeDragStartPositionRef = useRef<{ blobId: string; x: number; y: number } | null>(null);
   const hadSelectionAtPointerDownRef = useRef(false);
-  /** True if at pointer down the active element was inside a blob (user was editing); tap-up then cancels insertion only, no new blob. */
-  const hadActiveInsertionAtPointerDownRef = useRef(false);
   /** True once we've committed to either pan or selection for this gesture. */
   const gestureChosenRef = useRef(false);
   const activePointersRef = useRef<Map<number, { clientX: number; clientY: number }>>(new Map());
@@ -152,23 +172,209 @@ export default function Home() {
   const [focusBlobId, setFocusBlobId] = useState<string | null>(null);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [selectionRect, setSelectionRect] = useState<Bounds | null>(null);
-  const [selectionBounds, setSelectionBounds] = useState<Bounds | null>(null);
   const [pan, setPan] = useState({ x: 0, y: 0 });
   const [scale, setScale] = useState(1);
   const [isPanning, setIsPanning] = useState(false);
   const [isShowingAll, setIsShowingAll] = useState(true);
+  const [canvasSize, setCanvasSize] = useState({ width: 0, height: 0 });
   const [pendingDeleteIds, setPendingDeleteIds] = useState<string[] | null>(null);
   const [llmSummary, setLlmSummary] = useState<string | null>(null);
   const [llmLoading, setLlmLoading] = useState(false);
+  const [isBlobbyHovered, setIsBlobbyHovered] = useState(false);
+  const [lastBlobbyOutput, setLastBlobbyOutput] = useState<string | null>(null);
+  const [showRecalledOutput, setShowRecalledOutput] = useState(false);
+  const [backerHovered, setBackerHovered] = useState(false);
+  const blobbyLongHoverTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const backerLeaveGraceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const recallHideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [draggingBlobId, setDraggingBlobId] = useState<string | null>(null);
+  const [measuredMergeBounds, setMeasuredMergeBounds] = useState<{
+    a: { left: number; top: number; width: number; height: number };
+    b: { left: number; top: number; width: number; height: number };
+  } | null>(null);
 
-  const visibleBlobs = blobs.filter((b) => !b.hidden);
+  const visibleBlobs = React.useMemo(
+    () => blobs.filter((b) => !b.hidden),
+    [blobs]
+  );
 
-  // Clear LLM summary after 12s so the word box can return to idle/random words
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ro = new ResizeObserver((entries) => {
+      const { width, height } = entries[0]?.contentRect ?? { width: 0, height: 0 };
+      setCanvasSize({ width, height });
+    });
+    ro.observe(canvas);
+    setCanvasSize({ width: canvas.clientWidth, height: canvas.clientHeight });
+    return () => ro.disconnect();
+  }, []);
+
+  // Rehydrate camera from cloud (once per load)
+  useEffect(() => {
+    if (!initialCameraPosition) return;
+    const s = Math.min(MAX_SCALE, Math.max(MIN_SCALE, initialCameraPosition.scale));
+    const p = { x: initialCameraPosition.panX, y: initialCameraPosition.panY };
+    panRef.current = p;
+    scaleRef.current = s;
+    setPan(p);
+    setScale(s);
+    setIsShowingAll(false);
+    clearInitialCamera();
+  }, [initialCameraPosition, clearInitialCamera]);
+
+  // Persist camera to cloud when pan/scale change (debounced). Don't persist while we still have cloud camera to apply.
+  const cameraPersistDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    if (initialCameraPosition != null) {
+      if (cameraPersistDebounceRef.current) {
+        clearTimeout(cameraPersistDebounceRef.current);
+        cameraPersistDebounceRef.current = null;
+      }
+      return; // Wait until we've applied cloud camera
+    }
+    if (cameraPersistDebounceRef.current) clearTimeout(cameraPersistDebounceRef.current);
+    cameraPersistDebounceRef.current = setTimeout(() => {
+      cameraPersistDebounceRef.current = null;
+      persistCamera({ panX: pan.x, panY: pan.y, scale });
+    }, 500);
+    return () => {
+      if (cameraPersistDebounceRef.current) clearTimeout(cameraPersistDebounceRef.current);
+    };
+  }, [pan.x, pan.y, scale, initialCameraPosition, persistCamera]);
+
+  // Merge cues and merge target only consider visible (non-hidden) blobs.
+  const { closeTargetId, veryCloseTargetId, fuseTargetId, mergeGap, mergeBoundsA, mergeBoundsB } = React.useMemo(() => {
+    if (!draggingBlobId || visibleBlobs.length < 2) {
+      return { closeTargetId: null, veryCloseTargetId: null, mergeGap: Infinity, mergeBoundsA: null, mergeBoundsB: null };
+    }
+    const draggingBlob = visibleBlobs.find((b) => b.id === draggingBlobId);
+    if (!draggingBlob) {
+      return { closeTargetId: null, veryCloseTargetId: null, mergeGap: Infinity, mergeBoundsA: null, mergeBoundsB: null };
+    }
+    const boundsA = getBlobBounds(draggingBlob);
+    let bestId: string | null = null;
+    let bestGap = Infinity;
+    for (const b of visibleBlobs) {
+      if (b.id === draggingBlobId) continue;
+      const boundsB = getBlobBounds(b);
+      const gap = gapBetweenRects(boundsA, boundsB);
+      if (gap < bestGap) {
+        bestGap = gap;
+        bestId = b.id;
+      }
+    }
+    const closeTargetId = bestId != null && bestGap < CLOSE_THRESHOLD ? bestId : null;
+    const veryCloseTargetId = bestId != null && bestGap < VERY_CLOSE_THRESHOLD ? bestId : null;
+    const mergeBoundsB = bestId != null ? getBlobBounds(visibleBlobs.find((b) => b.id === bestId)!) : null;
+    // fuseTargetId: the cue rects are actually fused (gap between padded rects < FUSE_THRESHOLD)
+    const FUSE_THRESHOLD = 12;
+    const fuseTargetId =
+      closeTargetId != null && mergeBoundsB != null
+        ? gapBetweenRects(
+            getMergeCueRect(boundsA, MERGE_CUE_PADDING),
+            getMergeCueRect(mergeBoundsB, MERGE_CUE_PADDING)
+          ) < FUSE_THRESHOLD
+          ? closeTargetId
+          : null
+        : null;
+    return {
+      closeTargetId,
+      veryCloseTargetId,
+      fuseTargetId,
+      mergeGap: bestId != null ? bestGap : Infinity,
+      mergeBoundsA: boundsA,
+      mergeBoundsB,
+    };
+  }, [draggingBlobId, visibleBlobs]);
+
+  useLayoutEffect(() => {
+    if (!draggingBlobId || !closeTargetId || !canvasInnerRef.current || !pan || scale === 0) {
+      setMeasuredMergeBounds(null);
+      return;
+    }
+    const inner = canvasInnerRef.current;
+    const elA = inner.querySelector<HTMLElement>(`[data-blob-card][data-blob-id="${draggingBlobId}"] [data-blob-card-inner]`);
+    const elB = inner.querySelector<HTMLElement>(`[data-blob-card][data-blob-id="${closeTargetId}"] [data-blob-card-inner]`);
+    if (!elA || !elB) {
+      setMeasuredMergeBounds(null);
+      return;
+    }
+    const rA = elA.getBoundingClientRect();
+    const rB = elB.getBoundingClientRect();
+    const worldA = {
+      left: (rA.left - pan.x) / scale,
+      top: (rA.top - pan.y) / scale,
+      width: rA.width / scale,
+      height: rA.height / scale,
+    };
+    const worldB = {
+      left: (rB.left - pan.x) / scale,
+      top: (rB.top - pan.y) / scale,
+      width: rB.width / scale,
+      height: rB.height / scale,
+    };
+    setMeasuredMergeBounds({ a: worldA, b: worldB });
+  }, [draggingBlobId, closeTargetId, pan, scale]);
+
+  // Clear LLM summary after 12s — paused while the mouse is over the word box
   useEffect(() => {
     if (llmSummary == null) return;
+    if (isBlobbyHovered) return;
     const t = setTimeout(() => setLlmSummary(null), 12_000);
     return () => clearTimeout(t);
-  }, [llmSummary]);
+  }, [llmSummary, isBlobbyHovered]);
+
+  const BLOBBY_LONG_HOVER_MS = 3000;
+
+  const handleBlobbyBackerPointerEnter = useCallback(() => {
+    setBackerHovered(true);
+    if (backerLeaveGraceRef.current) {
+      clearTimeout(backerLeaveGraceRef.current);
+      backerLeaveGraceRef.current = null;
+    }
+    if (blobbyLongHoverTimerRef.current) clearTimeout(blobbyLongHoverTimerRef.current);
+    blobbyLongHoverTimerRef.current = setTimeout(() => {
+      blobbyLongHoverTimerRef.current = null;
+      setShowRecalledOutput(true);
+    }, BLOBBY_LONG_HOVER_MS);
+  }, []);
+
+  const handleBlobbyBackerPointerLeave = useCallback(() => {
+    setBackerHovered(false);
+    if (backerLeaveGraceRef.current) clearTimeout(backerLeaveGraceRef.current);
+    backerLeaveGraceRef.current = setTimeout(() => {
+      backerLeaveGraceRef.current = null;
+      if (blobbyLongHoverTimerRef.current) {
+        clearTimeout(blobbyLongHoverTimerRef.current);
+        blobbyLongHoverTimerRef.current = null;
+      }
+    }, 400);
+    if (recallHideTimerRef.current) {
+      clearTimeout(recallHideTimerRef.current);
+      recallHideTimerRef.current = null;
+    }
+  }, []);
+
+  // When in recall mode, hide the recalled output shortly after pointer leaves both backer and word box
+  useEffect(() => {
+    if (!showRecalledOutput || backerHovered || isBlobbyHovered) return;
+    recallHideTimerRef.current = setTimeout(() => setShowRecalledOutput(false), 400);
+    return () => {
+      if (recallHideTimerRef.current) {
+        clearTimeout(recallHideTimerRef.current);
+        recallHideTimerRef.current = null;
+      }
+    };
+  }, [showRecalledOutput, backerHovered, isBlobbyHovered]);
+
+  // After refresh when logged in: seed lastBlobbyOutput from cloud blobbyLog when it loads so 3s-hover recall works
+  useEffect(() => {
+    const last = getLastBlobbyLogEntry(blobbyLog);
+    if (last != null) {
+      setLastBlobbyOutput((prev) => (prev == null ? last : prev));
+    }
+  }, [blobbyLog]);
 
   const handleBlobbyTap = useCallback(async () => {
     const combined = blobs
@@ -186,9 +392,15 @@ export default function Home() {
       });
       const data = await res.json().catch(() => ({}));
       if (res.ok && typeof data?.summary === "string") {
-        setLlmSummary(data.summary);
+        const summary = data.summary;
+        setLlmSummary(summary);
+        setLastBlobbyOutput(summary);
+        appendBlobbyLog(summary);
       } else if (res.status === 429 || data?.error === "RATE_LIMIT") {
-        setLlmSummary("The AI limit has been reached. Try again tomorrow.");
+        const msg = "The AI limit has been reached. Try again tomorrow.";
+        setLlmSummary(msg);
+        setLastBlobbyOutput(msg);
+        appendBlobbyLog(msg);
       }
     } finally {
       setLlmLoading(false);
@@ -202,42 +414,31 @@ export default function Home() {
     prevBlobCountRef.current = blobs.length;
   }, [blobs.length]);
 
-  // Compute selection bounds from DOM when selectedIds or visible blobs change
-  useEffect(() => {
-    if (selectedIds.length === 0) {
-      setSelectionBounds(null);
-      return;
-    }
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const cards = canvas.querySelectorAll<HTMLElement>("[data-blob-card][data-blob-id]");
-    let bounds: Bounds | null = null;
+  // Compute selection bounds in world coordinates (so overlay moves with pan/scale)
+  const selectionBounds = React.useMemo(() => {
+    if (selectedIds.length === 0) return null;
     const idSet = new Set(selectedIds);
-    for (const card of cards) {
-      const id = card.getAttribute("data-blob-id");
-      if (!id || !idSet.has(id)) continue;
-      const inner = card.querySelector<HTMLElement>("[data-blob-card-inner]");
-      const r = (inner ?? card).getBoundingClientRect();
+    let bounds: Bounds | null = null;
+    for (const blob of visibleBlobs) {
+      if (!idSet.has(blob.id)) continue;
+      const r = getBlobBounds(blob);
       if (!bounds) {
         bounds = { left: r.left, top: r.top, width: r.width, height: r.height };
       } else {
         const left = Math.min(bounds.left, r.left);
         const top = Math.min(bounds.top, r.top);
-        const right = Math.max(bounds.left + bounds.width, r.right);
-        const bottom = Math.max(bounds.top + bounds.height, r.bottom);
+        const right = Math.max(bounds.left + bounds.width, r.left + r.width);
+        const bottom = Math.max(bounds.top + bounds.height, r.top + r.height);
         bounds = { left, top, width: right - left, height: bottom - top };
       }
     }
-    if (bounds) {
-      setSelectionBounds({
-        left: bounds.left - SELECTION_PADDING,
-        top: bounds.top - SELECTION_PADDING,
-        width: bounds.width + SELECTION_PADDING * 2,
-        height: bounds.height + SELECTION_PADDING * 2,
-      });
-    } else {
-      setSelectionBounds(null);
-    }
+    if (!bounds) return null;
+    return {
+      left: bounds.left - SELECTION_PADDING,
+      top: bounds.top - SELECTION_PADDING,
+      width: bounds.width + SELECTION_PADDING * 2,
+      height: bounds.height + SELECTION_PADDING * 2,
+    };
   }, [selectedIds, visibleBlobs]);
 
   useEffect(() => {
@@ -246,16 +447,43 @@ export default function Home() {
   }, [selectedIds]);
 
   useEffect(() => {
+    visibleBlobsRef.current = visibleBlobs;
+  }, [visibleBlobs]);
+
+  useEffect(() => {
+    blobsRef.current = blobs;
+  }, [blobs]);
+
+  useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key !== "Delete" && e.key !== "Backspace") return;
       const ids = selectedIdsRef.current;
       if (ids.length === 0) return;
       e.preventDefault();
       e.stopPropagation();
+      const currentBlobs = blobsRef.current;
+      const allEmpty = ids.every((id) => {
+        const b = currentBlobs.find((blob) => blob.id === id);
+        return b != null && isBlobContentEmpty(b.content);
+      });
+      if (allEmpty) {
+        dispatch({ type: "DELETE_BLOBS", payload: ids });
+        setSelectedIds([]);
+        return;
+      }
       setPendingDeleteIds([...ids]);
     };
     document.addEventListener("keydown", handleKeyDown, true);
     return () => document.removeEventListener("keydown", handleKeyDown, true);
+  }, [dispatch]);
+
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      setSelectedIds([]);
+    };
+    document.addEventListener("keydown", onKeyDown, true);
+    return () => document.removeEventListener("keydown", onKeyDown, true);
   }, []);
 
   const handlePointerDown = useCallback(
@@ -269,14 +497,11 @@ export default function Home() {
       activePointersRef.current.set(e.pointerId, { clientX: e.clientX, clientY: e.clientY });
       const isFirstPointer = activePointersRef.current.size === 1;
       if (isFirstPointer) {
-        window.dispatchEvent(new CustomEvent("blob:close-menus"));
+        dispatchCloseMenus();
         pointerDownOnCanvas.current = true;
         primaryPointerIdRef.current = e.pointerId;
         menuWasOpenAtPointerDown.current = anyMenuOpenRef.current;
         hadSelectionAtPointerDownRef.current = selectedIdsCountRef.current > 0;
-        hadActiveInsertionAtPointerDownRef.current = !!(
-          document.activeElement && (document.activeElement as HTMLElement).closest?.("[data-blob-card]")
-        );
         dragStart.current = { x: e.clientX, y: e.clientY };
         pointerDownTimeRef.current = Date.now();
         gestureChosenRef.current = false;
@@ -315,7 +540,7 @@ export default function Home() {
         const newScale = Math.min(MAX_SCALE, Math.max(MIN_SCALE, s * scaleFactor));
         const newPan = {
           x: centerX - ((last.centerX - p.x) / s) * newScale,
-          y: centerY - HEADER_HEIGHT - ((last.centerY - HEADER_HEIGHT - p.y) / s) * newScale,
+          y: centerY - ((last.centerY - p.y) / s) * newScale,
         };
         panRef.current = newPan;
         scaleRef.current = newScale;
@@ -411,7 +636,6 @@ export default function Home() {
 
       setSelectedIds([]);
       if (hadSelectionAtPointerDownRef.current) return;
-      if (hadActiveInsertionAtPointerDownRef.current) return;
 
       const { x: worldX, y: worldY } = screenToWorld(
         e.clientX - 24,
@@ -431,18 +655,96 @@ export default function Home() {
 
   const clearSelection = useCallback(() => setSelectedIds([]), []);
 
+  const handleDragStart = useCallback((blobId: string) => {
+    setDraggingBlobId(blobId);
+    const ids = selectedIdsRef.current;
+    if (ids.length > 1 && ids.includes(blobId)) {
+      const visible = visibleBlobsRef.current;
+      const positions: Record<string, { x: number; y: number }> = {};
+      for (const b of visible) {
+        if (ids.includes(b.id) && !b.locked) positions[b.id] = { x: b.x, y: b.y };
+      }
+      multiDragStartPositionsRef.current = positions;
+      multiDragSelectedIdsRef.current = [...ids];
+      mergeDragStartPositionRef.current = null;
+    } else {
+      multiDragStartPositionsRef.current = null;
+      multiDragSelectedIdsRef.current = null;
+      const blob = blobs.find((b) => b.id === blobId);
+      mergeDragStartPositionRef.current = blob ? { blobId, x: blob.x, y: blob.y } : null;
+    }
+  }, [blobs]);
+
+  const handleMoveSelected = useCallback((dx: number, dy: number) => {
+    const start = multiDragStartPositionsRef.current;
+    const ids = multiDragSelectedIdsRef.current;
+    if (!start || !ids) return;
+    for (const id of ids) {
+      const s = start[id];
+      if (s) dispatch({ type: "SET_POSITION", payload: { id, x: s.x + dx, y: s.y + dy } });
+    }
+  }, [dispatch]);
+
+  const handleDragEnd = useCallback(
+    (blobId: string) => {
+      const originalPosition =
+        multiDragStartPositionsRef.current?.[blobId] ??
+        (mergeDragStartPositionRef.current?.blobId === blobId
+          ? { x: mergeDragStartPositionRef.current.x, y: mergeDragStartPositionRef.current.y }
+          : undefined);
+      multiDragStartPositionsRef.current = null;
+      multiDragSelectedIdsRef.current = null;
+      mergeDragStartPositionRef.current = null;
+      if (fuseTargetId && blobId !== fuseTargetId) {
+        const targetId = fuseTargetId;
+        // Merge at top of stationary blob if dragged blob is above its vertical midpoint, else at bottom
+        const sourceBlob = blobs.find((b) => b.id === blobId);
+        const targetBlob = blobs.find((b) => b.id === targetId);
+        const prependSource =
+          sourceBlob && targetBlob
+            ? (() => {
+                const boundsA = getBlobBounds(sourceBlob);
+                const boundsB = getBlobBounds(targetBlob);
+                const sourceCenterY = boundsA.top + boundsA.height / 2;
+                const targetMidY = boundsB.top + boundsB.height / 2;
+                return sourceCenterY < targetMidY;
+              })()
+            : false;
+        // Preserve target blob size when merging (so Raw mode merged blob doesn’t resize)
+        const canvas = canvasRef.current;
+        if (canvas && scale > 0) {
+          const card = canvas.querySelector<HTMLElement>(`[data-blob-card][data-blob-id="${targetId}"]`);
+          if (card) {
+            const inner = card.querySelector<HTMLElement>("[data-blob-card-inner]");
+            const r = (inner ?? card).getBoundingClientRect();
+            const worldW = Math.max(120, r.width / scale);
+            const worldH = Math.max(80, r.height / scale);
+            dispatch({ type: "SET_BLOB_SIZE", payload: { id: targetId, width: worldW, height: worldH } });
+          }
+        }
+        dispatch({
+          type: "MERGE_BLOBS",
+          payload: { sourceId: blobId, targetId, prependSource, sourcePosition: originalPosition },
+        });
+        setSelectedIds((prev) => (prev.includes(blobId) ? prev.filter((id) => id !== blobId && id !== targetId).concat(targetId) : prev));
+      }
+      setDraggingBlobId(null);
+    },
+    [dispatch, scale, fuseTargetId, blobs]
+  );
+
   const handleWheel = useCallback((e: WheelEvent) => {
     e.preventDefault();
     const p = panRef.current;
     const s = scaleRef.current;
     const delta = -e.deltaY * WHEEL_ZOOM_SENSITIVITY;
     const newScale = Math.min(MAX_SCALE, Math.max(MIN_SCALE, s * (1 + delta)));
-    // World point under cursor — account for the header offset
+    // World point under cursor
     const worldX = (e.clientX - p.x) / s;
-    const worldY = (e.clientY - HEADER_HEIGHT - p.y) / s;
+    const worldY = (e.clientY - p.y) / s;
     // New pan keeps that world point fixed under the cursor
     const newPanX = e.clientX - worldX * newScale;
-    const newPanY = e.clientY - HEADER_HEIGHT - worldY * newScale;
+    const newPanY = e.clientY - worldY * newScale;
     panRef.current = { x: newPanX, y: newPanY };
     scaleRef.current = newScale;
     setPan({ x: newPanX, y: newPanY });
@@ -457,7 +759,7 @@ export default function Home() {
     return () => el.removeEventListener("wheel", handleWheel);
   }, [handleWheel]);
 
-  const showAll = useCallback(() => {
+  const zoomToFit = useCallback(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const viewportWidth = canvas.clientWidth;
@@ -468,40 +770,139 @@ export default function Home() {
       setPan({ x: 0, y: 0 });
       setScale(1);
       setIsShowingAll(true);
+      persistCamera({ panX: 0, panY: 0, scale: 1 }, { immediate: true });
       return;
     }
+    const panVal = panRef.current;
+    const scaleVal = scaleRef.current;
+    const canvasRect = canvas.getBoundingClientRect();
+    const visibleIds = new Set(visibleBlobs.map((b) => b.id));
     let left = Infinity;
     let top = Infinity;
     let right = -Infinity;
     let bottom = -Infinity;
-    for (const b of visibleBlobs) {
-      left = Math.min(left, b.x);
-      top = Math.min(top, b.y);
-      right = Math.max(right, b.x + CARD_WIDTH);
-      bottom = Math.max(bottom, b.y + CARD_HEIGHT);
+    const cards = canvas.querySelectorAll<HTMLElement>("[data-blob-card][data-blob-id]");
+    let usedDomBounds = false;
+    for (const card of cards) {
+      const id = card.getAttribute("data-blob-id");
+      if (!id || !visibleIds.has(id)) continue;
+      const inner = card.querySelector<HTMLElement>("[data-blob-card-inner]");
+      const r = (inner ?? card).getBoundingClientRect();
+      const worldLeft = (r.left - canvasRect.left - panVal.x) / scaleVal;
+      const worldTop = (r.top - canvasRect.top - panVal.y) / scaleVal;
+      const worldW = r.width / scaleVal;
+      const worldH = r.height / scaleVal;
+      left = Math.min(left, worldLeft);
+      top = Math.min(top, worldTop);
+      right = Math.max(right, worldLeft + worldW);
+      bottom = Math.max(bottom, worldTop + worldH);
+      usedDomBounds = true;
     }
-    const boundsWidth = right - left + SHOW_ALL_PADDING * 2;
-    const boundsHeight = bottom - top + SHOW_ALL_PADDING * 2;
-    const scaleX = viewportWidth / boundsWidth;
-    const scaleY = viewportHeight / boundsHeight;
+    if (!usedDomBounds) {
+      for (const b of visibleBlobs) {
+        const rect = getBlobBounds(b);
+        left = Math.min(left, rect.left);
+        top = Math.min(top, rect.top);
+        right = Math.max(right, rect.left + rect.width);
+        bottom = Math.max(bottom, rect.top + rect.height);
+      }
+    }
+    const paddingL = SHOW_ALL_PADDING + SHOW_ALL_CONTROLS_LEFT_PX;
+    const paddingR = SHOW_ALL_PADDING;
+    const paddingT = SHOW_ALL_PADDING;
+    const paddingB = SHOW_ALL_PADDING;
+    const contentW = right - left;
+    const contentH = bottom - top;
+    const scaleX = (viewportWidth - paddingL - paddingR) / contentW;
+    const scaleY = (viewportHeight - paddingT - paddingB) / contentH;
     let newScale = Math.min(scaleX, scaleY, MAX_SCALE);
     newScale = Math.max(MIN_SCALE, newScale);
     const boundsCenterX = (left + right) / 2;
     const boundsCenterY = (top + bottom) / 2;
-    const newPanX = viewportWidth / 2 - boundsCenterX * newScale;
-    const newPanY = viewportHeight / 2 - boundsCenterY * newScale;
+    const newPanX = (viewportWidth + paddingL - paddingR) / 2 - boundsCenterX * newScale;
+    const newPanY = (viewportHeight + paddingT - paddingB) / 2 - boundsCenterY * newScale;
     panRef.current = { x: newPanX, y: newPanY };
     scaleRef.current = newScale;
     setPan({ x: newPanX, y: newPanY });
     setScale(newScale);
     setIsShowingAll(true);
-  }, [visibleBlobs]);
+    persistCamera({ panX: newPanX, panY: newPanY, scale: newScale }, { immediate: true });
+  }, [visibleBlobs, persistCamera]);
+
+  const zoomToSelection = useCallback(() => {
+    const canvas = canvasRef.current;
+    if (!canvas || selectedIds.length === 0) return;
+    const viewportWidth = canvas.clientWidth;
+    const viewportHeight = canvas.clientHeight;
+    const selectedSet = new Set(selectedIds);
+    const toFit = visibleBlobs.filter((b) => selectedSet.has(b.id));
+    if (toFit.length === 0) return;
+    const panVal = panRef.current;
+    const scaleVal = scaleRef.current;
+    const canvasRect = canvas.getBoundingClientRect();
+    let left = Infinity;
+    let top = Infinity;
+    let right = -Infinity;
+    let bottom = -Infinity;
+    const cards = canvas.querySelectorAll<HTMLElement>("[data-blob-card][data-blob-id]");
+    let usedDomBounds = false;
+    for (const card of cards) {
+      const id = card.getAttribute("data-blob-id");
+      if (!id || !selectedSet.has(id)) continue;
+      const inner = card.querySelector<HTMLElement>("[data-blob-card-inner]");
+      const r = (inner ?? card).getBoundingClientRect();
+      const worldLeft = (r.left - canvasRect.left - panVal.x) / scaleVal;
+      const worldTop = (r.top - canvasRect.top - panVal.y) / scaleVal;
+      const worldW = r.width / scaleVal;
+      const worldH = r.height / scaleVal;
+      left = Math.min(left, worldLeft);
+      top = Math.min(top, worldTop);
+      right = Math.max(right, worldLeft + worldW);
+      bottom = Math.max(bottom, worldTop + worldH);
+      usedDomBounds = true;
+    }
+    if (!usedDomBounds) {
+      for (const b of toFit) {
+        const rect = getBlobBounds(b);
+        left = Math.min(left, rect.left);
+        top = Math.min(top, rect.top);
+        right = Math.max(right, rect.left + rect.width);
+        bottom = Math.max(bottom, rect.top + rect.height);
+      }
+    }
+    const paddingL = SHOW_ALL_PADDING + SHOW_ALL_CONTROLS_LEFT_PX;
+    const paddingR = SHOW_ALL_PADDING;
+    const paddingT = SHOW_ALL_PADDING;
+    const paddingB = SHOW_ALL_PADDING;
+    const contentW = right - left;
+    const contentH = bottom - top;
+    const scaleX = (viewportWidth - paddingL - paddingR) / contentW;
+    const scaleY = (viewportHeight - paddingT - paddingB) / contentH;
+    let newScale = Math.min(scaleX, scaleY, MAX_SCALE);
+    newScale = Math.max(MIN_SCALE, newScale);
+    const boundsCenterX = (left + right) / 2;
+    const boundsCenterY = (top + bottom) / 2;
+    const newPanX = (viewportWidth + paddingL - paddingR) / 2 - boundsCenterX * newScale;
+    const newPanY = (viewportHeight + paddingT - paddingB) / 2 - boundsCenterY * newScale;
+    panRef.current = { x: newPanX, y: newPanY };
+    scaleRef.current = newScale;
+    setPan({ x: newPanX, y: newPanY });
+    setScale(newScale);
+    setIsShowingAll(false);
+    persistCamera({ panX: newPanX, panY: newPanY, scale: newScale }, { immediate: true });
+  }, [visibleBlobs, selectedIds, persistCamera]);
 
   useEffect(() => {
-    const handler = () => showAll();
-    window.addEventListener("blob:show-all", handler);
-    return () => window.removeEventListener("blob:show-all", handler);
-  }, [showAll]);
+    const handler = () => zoomToFit();
+    window.addEventListener("blob:zoom-to-fit", handler);
+    return () => window.removeEventListener("blob:zoom-to-fit", handler);
+  }, [zoomToFit]);
+
+  useEffect(() => {
+    const handler = () => zoomToSelection();
+    window.addEventListener("blob:zoom-to-selection", handler);
+    return () => window.removeEventListener("blob:zoom-to-selection", handler);
+  }, [zoomToSelection]);
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
@@ -536,6 +937,31 @@ export default function Home() {
     return () => document.removeEventListener("keydown", onKeyDown, true);
   }, [undo, redo, canUndo, canRedo]);
 
+  /** When switching to Raw, capture current blob sizes from DOM so they don’t change. */
+  const MIN_BLOB_W = 120;
+  const MIN_BLOB_H = 80;
+  const captureBlobSizesBeforeViewChange = useCallback(
+    (newView: "raw" | "preview") => {
+      if (newView !== "raw") return;
+      const canvas = canvasRef.current;
+      if (!canvas || scale <= 0) return;
+      const cards = canvas.querySelectorAll<HTMLElement>("[data-blob-card][data-blob-id]");
+      const blobMap = new Map(blobs.map((b) => [b.id, b]));
+      for (const card of cards) {
+        const id = card.getAttribute("data-blob-id");
+        if (!id) continue;
+        const blob = blobMap.get(id);
+        if (!blob || blob.locked) continue;
+        const inner = card.querySelector<HTMLElement>("[data-blob-card-inner]");
+        const r = (inner ?? card).getBoundingClientRect();
+        const worldW = Math.max(MIN_BLOB_W, r.width / scale);
+        const worldH = Math.max(MIN_BLOB_H, r.height / scale);
+        dispatch({ type: "SET_BLOB_SIZE", payload: { id, width: worldW, height: worldH } });
+      }
+    },
+    [blobs, dispatch, scale]
+  );
+
   return (
     <main className={styles.main}>
       <ControlsPortalProvider>
@@ -550,7 +976,12 @@ export default function Home() {
           const lockedIds = blobs.filter((b) => b.locked).map((b) => b.id);
           if (lockedIds.length > 0) dispatch({ type: "SET_LOCKED", payload: { ids: lockedIds, locked: false } });
         }}
-        canShowAll={!isShowingAll}
+        onBeforeBlobViewChange={captureBlobSizesBeforeViewChange}
+        canSelectAll={visibleBlobs.length > 0 && selectedIds.length < visibleBlobs.length}
+        onSelectAll={() => setSelectedIds(visibleBlobs.map((b) => b.id))}
+        canDeselectAll={selectedIds.length > 0}
+        onDeselectAll={() => setSelectedIds([])}
+        canZoomToSelection={selectedIds.length > 0}
       />
       <div
         ref={canvasRef}
@@ -573,12 +1004,43 @@ export default function Home() {
             transformOrigin: "0 0",
           }}
         >
+        {draggingBlobId && closeTargetId && (measuredMergeBounds ?? (mergeBoundsA && mergeBoundsB)) && (() => {
+          const draggingBlob = visibleBlobs.find((b) => b.id === draggingBlobId);
+          const rectB = measuredMergeBounds?.b ?? mergeBoundsB!;
+          const rectA = measuredMergeBounds && draggingBlob
+            ? { left: draggingBlob.x, top: draggingBlob.y, width: measuredMergeBounds.a.width, height: measuredMergeBounds.a.height }
+            : (measuredMergeBounds?.a ?? mergeBoundsA!);
+          const sourceCenterY = rectA.top + rectA.height / 2;
+          const targetMidY = rectB.top + rectB.height / 2;
+          const insertAtTop = sourceCenterY < targetMidY;
+          const viewport =
+            scale > 0 && canvasSize.width > 0 && canvasSize.height > 0
+              ? {
+                  left: -pan.x / scale,
+                  top: -pan.y / scale,
+                  width: canvasSize.width / scale,
+                  height: canvasSize.height / scale,
+                }
+              : undefined;
+          return (
+            <BlobBoundaryOverlay
+              rectA={rectA}
+              rectB={rectB}
+              gap={mergeGap}
+              isVeryClose={fuseTargetId === closeTargetId}
+              insertAtTop={insertAtTop}
+              viewport={viewport}
+            />
+          );
+        })()}
         {visibleBlobs.map((blob) => (
           <BlobCard
             key={blob.id}
             blob={blob}
             blobMarkdownView={preferences.blobMarkdownView}
             scale={scale}
+            pan={pan}
+            blobbyBackerSizePx={preferences.blobbyBackerSizePx}
             isSelected={selectedIds.includes(blob.id)}
             autoFocus={blob.id === focusBlobId}
             onAutoFocusDone={() => setFocusBlobId(null)}
@@ -600,14 +1062,82 @@ export default function Home() {
                 payload: { id: blob.id, x, y },
               })
             }
+            isPartOfMultiSelection={selectedIds.length > 1 && selectedIds.includes(blob.id)}
+            onMoveSelected={handleMoveSelected}
             onFocus={() => window.dispatchEvent(new CustomEvent("blob:user-action"))}
             onDuplicate={() => dispatch({ type: "DUPLICATE_BLOB", payload: blob.id })}
             onDelete={() => dispatch({ type: "DELETE_BLOB", payload: blob.id })}
             onHide={() => dispatch({ type: "SET_HIDDEN", payload: { ids: [blob.id], hidden: true } })}
             onLock={() => dispatch({ type: "SET_LOCKED", payload: { ids: [blob.id], locked: true } })}
             onUnlock={() => dispatch({ type: "SET_LOCKED", payload: { ids: [blob.id], locked: false } })}
+            onDragStart={handleDragStart}
+            onDragEnd={handleDragEnd}
           />
         ))}
+        {selectedIds.length > 0 && selectionBounds && (
+          <div data-selection-overlay>
+            <SelectionOverlay
+              bounds={selectionBounds}
+              menuRef={selectionMenuRef}
+              worldCoordinates
+              onDelete={() => {
+                dispatch({ type: "DELETE_BLOBS", payload: selectedIds });
+                clearSelection();
+              }}
+              onLock={() => {
+                dispatch({
+                  type: "SET_LOCKED",
+                  payload: { ids: selectedIds, locked: true },
+                });
+              }}
+              onUnlock={() => {
+                dispatch({
+                  type: "SET_LOCKED",
+                  payload: { ids: selectedIds, locked: false },
+                });
+              }}
+              onDuplicate={() => {
+                dispatch({ type: "DUPLICATE_BLOBS", payload: selectedIds });
+              }}
+              onHide={() => {
+                dispatch({
+                  type: "SET_HIDDEN",
+                  payload: { ids: selectedIds, hidden: true },
+                });
+                clearSelection();
+              }}
+              onCopyAll={() => {
+                const text = selectedIds
+                  .map((id) => blobs.find((b) => b.id === id)?.content ?? "")
+                  .join("\n\n");
+                void navigator.clipboard.writeText(text);
+              }}
+              allSelectedLocked={
+                selectedIds.length > 0 &&
+                selectedIds.every(
+                  (id) => blobs.find((b) => b.id === id)?.locked
+                )
+              }
+              scale={scale}
+              onDragStart={() => {
+                const ids = selectedIdsRef.current;
+                if (ids.length === 0) return;
+                const visible = visibleBlobsRef.current;
+                const positions: Record<string, { x: number; y: number }> = {};
+                for (const b of visible) {
+                  if (ids.includes(b.id) && !b.locked) positions[b.id] = { x: b.x, y: b.y };
+                }
+                multiDragStartPositionsRef.current = positions;
+                multiDragSelectedIdsRef.current = [...ids];
+              }}
+              onMoveSelected={handleMoveSelected}
+              onDragEnd={() => {
+                multiDragStartPositionsRef.current = null;
+                multiDragSelectedIdsRef.current = null;
+              }}
+            />
+          </div>
+        )}
         </div>
       </div>
 
@@ -622,35 +1152,6 @@ export default function Home() {
         />
       )}
 
-      {selectedIds.length > 0 && selectionBounds && (
-        <div data-selection-overlay>
-          <SelectionOverlay
-            bounds={selectionBounds}
-            menuRef={selectionMenuRef}
-            onDelete={() => {
-              dispatch({ type: "DELETE_BLOBS", payload: selectedIds });
-              clearSelection();
-            }}
-            onLock={() => {
-              dispatch({
-                type: "SET_LOCKED",
-                payload: { ids: selectedIds, locked: true },
-              });
-            }}
-            onDuplicate={() => {
-              dispatch({ type: "DUPLICATE_BLOBS", payload: selectedIds });
-            }}
-            onHide={() => {
-              dispatch({
-                type: "SET_HIDDEN",
-                payload: { ids: selectedIds, hidden: true },
-              });
-              clearSelection();
-            }}
-          />
-        </div>
-      )}
-
       {/* Blobby backer: shared hit area for summarize + jump */}
       <BlobbyBacker
         sizePx={preferences.blobbyBackerSizePx}
@@ -658,12 +1159,23 @@ export default function Home() {
           handleBlobbyTap();
           if (typeof window !== "undefined") window.dispatchEvent(new CustomEvent("blobby:tap"));
         }}
+        onPointerEnter={handleBlobbyBackerPointerEnter}
+        onPointerLeave={handleBlobbyBackerPointerLeave}
       />
       <Blobby />
-      {(preferences.blobbyCommenting === "commenting" || llmSummary != null || llmLoading) && (
+      {(preferences.blobbyCommenting === "commenting" ||
+        llmSummary != null ||
+        llmLoading ||
+        (showRecalledOutput && (lastBlobbyOutput != null || getLastBlobbyLogEntry(blobbyLog) != null))) && (
         <BlobbyWordBox
-          summaryFromTap={llmSummary}
+          summaryFromTap={llmSummary ?? (showRecalledOutput ? (lastBlobbyOutput ?? getLastBlobbyLogEntry(blobbyLog)) : null)}
           summaryLoading={llmLoading}
+          onMouseOverChange={setIsBlobbyHovered}
+          onLeaveAfterAction={() => {
+            setShowRecalledOutput(false);
+            setLlmSummary(null);
+          }}
+          showOptionsWithoutHover={showRecalledOutput}
         />
       )}
 

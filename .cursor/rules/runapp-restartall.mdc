@@ -9,7 +9,7 @@ When the user says **runapp**, **runall**, **reloadapp**, **rerunapp**, **restar
 
 ## Canonical port
 
-**The app always runs on `http://localhost:3000`.** After runapp or restartall, open a Cursor Browser tab to that URL if none exists, or refresh the existing app tab to `http://localhost:3000?_=<timestamp>`. Never use 3001 or any other port.
+**The app always runs on `http://localhost:3000`.** After runapp or restartall, ensure a Cursor Browser tab shows the app: if a tab already has a URL containing `localhost:3000`, repurpose it by navigating that tab to `http://localhost:3000?_=<timestamp>`. Only if no such tab exists, open a new tab (`browser_navigate` with `newTab: true`). Never use 3001 or any other port.
 
 ## runapp
 
@@ -25,7 +25,7 @@ The script:
 
 1. Run `npm run runapp`, `npm run runall`, `npm run reloadapp`, or `npm run rerunapp`.
 2. Wait 4–6 s for the dev server to be ready (if the script started a new one, it needs a moment; if one was already running, the wait is harmless).
-3. **Open or refresh Cursor Browser on port 3000:** Call `browser_tabs` with `action: "list"`. If no tab has a URL containing `localhost:3000`, call `browser_navigate` with `http://localhost:3000?_=<timestamp>` and `newTab: true` to open a new Cursor Browser tab. If a tab already has the app (URL contains `localhost:3000`), call `browser_navigate` with `http://localhost:3000?_=<timestamp>` (no newTab) to refresh that tab. Always use the canonical port 3000 with a cache-busting query param.
+3. **Open or refresh Cursor Browser on port 3000:** Call `browser_tabs` with `action: "list"`. If a tab already has a URL containing `localhost:3000`, repurpose it: call `browser_navigate` with `http://localhost:3000?_=<timestamp>` and that tab's `viewId` (no newTab) to refresh. Only if no tab has the app URL, call `browser_navigate` with the same URL and `newTab: true` to open a new tab. Use a new timestamp in the query param each time.
 
 ## restartall
 
@@ -33,7 +33,7 @@ The script:
 
 1. Run `npm run restartall` (kills all dev servers on 3000/3001/3002/3003, rebuilds, starts fresh on 3000).
 2. Wait 4–6 s for the server to be ready.
-3. **Open or refresh Cursor Browser:** Same as runapp — call `browser_tabs` (list); if no tab has `localhost:3000`, call `browser_navigate` with `newTab: true`; otherwise call `browser_navigate` to `http://localhost:3000?_=<timestamp>` to refresh.
+3. **Open or refresh Cursor Browser:** Same as runapp — call `browser_tabs` (list); if a tab already has `localhost:3000`, navigate that tab to `http://localhost:3000?_=<timestamp>` (repurpose it). Only if no such tab exists, call `browser_navigate` with `newTab: true`.
 
 ## killAll
 

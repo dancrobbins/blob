@@ -3,16 +3,91 @@
   position: fixed;
   pointer-events: none;
   z-index: 10;
+  overflow: visible;
 }
 
 .overlayInteractive {
   pointer-events: auto;
 }
 
+/* When inside transformed canvas: move with pan/scale */
+.overlayWorld {
+  position: absolute;
+}
+
 .antsWrap {
   position: absolute;
   inset: 0;
   pointer-events: none;
+}
+
+/* Controls column: outside upper left of selection rect, same layout as blob cards */
+.controlsColumn {
+  position: absolute;
+  top: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  overflow: visible;
+  pointer-events: auto;
+}
+
+.controlWrap {
+  position: relative;
+  overflow: visible;
+  z-index: 1;
+}
+
+.dragHandle {
+  width: 24px;
+  height: 48px;
+  min-height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  color: var(--muted, #888);
+  cursor: grab;
+  border-radius: 6px;
+  -webkit-tap-highlight-color: transparent;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+  pointer-events: auto;
+  background: var(--blob-control-bg, rgba(255, 255, 255, 0.95));
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.overlay:hover .dragHandle,
+.overlay:hover .menuButton {
+  opacity: 1;
+}
+
+@media (pointer: coarse) {
+  .dragHandle,
+  .menuButton {
+    opacity: 1;
+  }
+}
+
+.dragHandle:active {
+  cursor: grabbing;
+}
+
+.dragHandle:hover {
+  background: var(--hover-bg, rgba(0, 0, 0, 0.06));
+  color: var(--fg, #333);
+}
+
+[data-theme="dark"] .dragHandle {
+  --muted: #888;
+  --blob-control-bg: rgba(40, 40, 40, 0.95);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+}
+
+[data-theme="dark"] .dragHandle:hover {
+  --hover-bg: rgba(255, 255, 255, 0.08);
+  --fg: #ddd;
 }
 
 .antsSvg {
@@ -42,9 +117,9 @@
 }
 
 .menuWrap {
-  position: absolute;
-  top: -36px;
-  right: 0;
+  position: relative;
+  flex-shrink: 0;
+  z-index: 1;
   pointer-events: auto;
 }
 
@@ -58,11 +133,11 @@
   font-size: 16px;
   line-height: 1;
   color: var(--muted, #888);
-  background: var(--menu-bg, #fff);
-  border: 1px solid var(--menu-border, rgba(0, 0, 0, 0.08));
+  background: var(--blob-control-bg, rgba(255, 255, 255, 0.95));
+  border: none;
   border-radius: 6px;
   cursor: pointer;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
   -webkit-tap-highlight-color: transparent;
   opacity: 0;
   transition: opacity 0.15s ease;
@@ -73,25 +148,21 @@
   opacity: 1;
 }
 
-@media (pointer: coarse) {
-  .menuButton {
-    opacity: 1;
-  }
-}
-
 .menuButton:hover {
   background: var(--hover-bg, rgba(0, 0, 0, 0.06));
   color: var(--fg, #333);
 }
 
 [data-theme="dark"] .menuButton {
+  --blob-control-bg: rgba(40, 40, 40, 0.95);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
   --menu-bg: #2a2a2a;
   --menu-border: rgba(255, 255, 255, 0.15);
 }
 
 [data-theme="dark"] .menuButton:hover {
-  --hover-bg: rgba(255, 255, 255, 0.1);
-  --fg: #eee;
+  --hover-bg: rgba(255, 255, 255, 0.08);
+  --fg: #ddd;
 }
 
 .selectionMenu {
@@ -137,4 +208,20 @@
 
 [data-theme="dark"] .selectionMenuItem:hover {
   --hover-bg: rgba(255, 255, 255, 0.08);
+}
+
+.selectionMenuItemDanger {
+  color: var(--danger-fg, #b91c1c);
+}
+
+[data-theme="dark"] .selectionMenuItemDanger {
+  --danger-fg: #fca5a5;
+}
+
+.selectionMenuItemDanger:hover {
+  background: var(--danger-hover-bg, rgba(185, 28, 28, 0.08));
+}
+
+[data-theme="dark"] .selectionMenuItemDanger:hover {
+  --danger-hover-bg: rgba(252, 165, 165, 0.1);
 }

@@ -1,0 +1,40 @@
+---
+description: Command "fixMobile" / "auditMobile" — audit all app interactions for mobile (viewport, touch targets, layout); report issues and fixes in plain English
+alwaysApply: true
+---
+
+# fixMobile / auditMobile command
+
+When the user says **fixMobile** or **auditMobile** (e.g. "fixMobile", "auditMobile", "audit mobile", "fix mobile"), run a **mobile interaction audit** and report in **plain English** what works, what doesn’t, and how to fix it.
+
+## Steps (in order)
+
+1. **Ensure the app is in Cursor Browser.** Call `browser_tabs` with `action: "list"`. If no tab has a URL containing `localhost:3000`, run the app (e.g. `npm run runapp`) then navigate to `http://localhost:3000`. If the app tab exists, use it (navigate with a cache-bust query if you need a fresh load).
+
+2. **Switch to a mobile viewport.** Call `browser_resize` with a mobile size (e.g. `width: 390`, `height: 844` for a typical phone). Use the app tab’s `viewId` if you have it.
+
+3. **Capture layout and structure.** Call `browser_snapshot` and `browser_take_screenshot` (optionally `fullPage: true`). Note: cut-off content, horizontal scroll, tiny tap targets, overlapping elements, text overflow, fixed elements covering content.
+
+4. **Audit interactions.** Exercise the main flows using the snapshot refs (e.g. `browser_click`):
+   - Open/close main menu; open/close account or other menus/dropdowns.
+   - Use primary actions (e.g. "Summarize blobs", create/edit, navigation).
+   - Any forms: focus, type, submit; check modals and overlays.
+   For each: confirm the action works (snapshot after click), and that targets are easy to tap (not too small or cramped).
+
+5. **Check touch-friendliness.** From snapshot/CSS or layout: interactive elements should have a minimum ~44px touch target; spacing between tappable items should avoid accidental taps. Note any that are too small or too close.
+
+6. **Report in plain English.** Summarize:
+   - **What works:** Brief list of flows that behave correctly on mobile.
+   - **What’s wrong:** Layout issues (overflow, cut-off, horizontal scroll), interaction failures (menu doesn’t open, button not tappable), and touch targets that are too small or too close.
+   - **How to fix it:** Concrete, step-by-step suggestions (e.g. "Increase min-height of menu items to 44px", "Use `max-width: 100vw` and `overflow-x: hidden` on the main container", "Add more padding between the two buttons in the header").
+
+## Summary
+
+| Step | Action |
+|------|--------|
+| 1 | Ensure app tab at localhost:3000 in Cursor Browser |
+| 2 | `browser_resize` to mobile (e.g. 390×844) |
+| 3 | `browser_snapshot` + `browser_take_screenshot` for layout |
+| 4 | Click through main menu, account, primary actions, forms; verify each works |
+| 5 | Note touch target size and spacing issues |
+| 6 | Report: what works, what’s wrong, how to fix (plain English) |

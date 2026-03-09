@@ -2,9 +2,11 @@
 "use strict";
 
 const { execSync, spawn } = require("child_process");
+const fs = require("fs");
 const path = require("path");
 
 const root = path.join(__dirname, "..");
+const nextDir = path.join(root, ".next");
 
 function killPort(port) {
   try {
@@ -38,6 +40,7 @@ console.log("Stopping dev server (ports 3000, 3001)...");
 killPort(3000);
 killPort(3001);
 
+try { fs.rmSync(nextDir, { recursive: true, force: true }); } catch (_) {}
 console.log("Building app...");
 execSync("npm run build", { cwd: root, stdio: "inherit" });
 

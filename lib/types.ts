@@ -71,6 +71,15 @@ export const BLOBBY_COLOR_NAMES: string[] = [
 export const CHARACTER_GRID_ROWS = BLOBBY_GRID_ROWS;
 export const CHARACTER_GRID_COLS = BLOBBY_GRID_COLS;
 
+/** Canvas viewport: pan (translate) and scale (zoom). Persisted to cloud per user. */
+export interface CameraPosition {
+  panX: number;
+  panY: number;
+  scale: number;
+  /** ISO timestamp when this camera was last changed; used for last-write-wins across tabs. */
+  updatedAt?: string;
+}
+
 /** Build info from /api/build-info (written at build time; buildNumber increments every build). */
 export interface BuildInfo {
   buildNumber?: number;

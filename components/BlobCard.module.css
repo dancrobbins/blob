@@ -28,7 +28,7 @@
   box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06);
   padding: 10px 12px;
   cursor: default;
-  overflow: auto;
+  overflow: visible;
 }
 
 [data-theme="dark"] .card {
@@ -193,9 +193,12 @@
 .contentRaw {
   flex: 1;
   min-width: 0;
+  min-height: 0;
+  align-self: stretch;
   width: 100%;
+  height: 100%;
+  box-sizing: border-box;
   padding: 0 4px 0 0;
-  min-height: 1.5em;
   font-size: 0.9375rem;
   line-height: 1.5;
   color: var(--fg, #111);
@@ -204,6 +207,7 @@
   background: transparent;
   resize: none;
   font-family: inherit;
+  overflow: auto;
 }
 
 .contentRaw:focus {
@@ -243,10 +247,82 @@
   min-width: 0;
 }
 
+/* Clickable links in Preview mode (markdown [text](url) rendered as <a>) */
+.content a {
+  color: var(--link-color, #0066cc);
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+[data-theme="dark"] .content a {
+  color: var(--link-color-dark, #7eb8ff);
+}
+
+/* Wrapper: extended hit area and z-order like popup menu */
+.linkPreviewWrap {
+  z-index: 1000;
+  pointer-events: auto;
+  /* No background so hit area is invisible; inner .linkPreview is the visible card */
+}
+
+/* Link preview thumbnail (after 3s hover on URL in Preview mode) */
+.linkPreview {
+  background: var(--blob-bg, #fffef9);
+  border: 1px solid var(--blob-border, rgba(0, 0, 0, 0.1));
+  border-radius: 12px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+  overflow: hidden;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+}
+
+[data-theme="dark"] .linkPreview {
+  background: var(--blob-bg);
+  border-color: var(--blob-border);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+}
+
+.linkPreviewImage {
+  width: 100%;
+  height: 160px;
+  object-fit: cover;
+  display: block;
+}
+
+.linkPreviewPlaceholder {
+  width: 100%;
+  height: 160px;
+  background: var(--muted-bg, rgba(0, 0, 0, 0.06));
+}
+
+[data-theme="dark"] .linkPreviewPlaceholder {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.linkPreviewTitle {
+  padding: 8px 10px;
+  font-size: 12px;
+  line-height: 1.3;
+  color: var(--fg, #111);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+[data-theme="dark"] .linkPreviewTitle {
+  color: var(--fg);
+}
+
 .menuWrap {
   position: relative;
   flex-shrink: 0;
   z-index: 1;
+}
+
+.menuWrapHidden {
+  visibility: hidden;
+  pointer-events: none;
 }
 
 .menuButton {

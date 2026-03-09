@@ -15,7 +15,8 @@ export type BlobsAction =
   | { type: "SET_LOCKED"; payload: { ids: string[]; locked: boolean } }
   | { type: "SET_HIDDEN"; payload: { ids: string[]; hidden: boolean } }
   | { type: "UNHIDE_ALL" }
-  | { type: "SET_BLOB_SIZE"; payload: { id: string; width: number; height: number } };
+  | { type: "SET_BLOB_SIZE"; payload: { id: string; width: number; height: number } }
+  | { type: "MERGE_BLOBS"; payload: { sourceId: string; targetId: string; prependSource?: boolean; sourcePosition?: { x: number; y: number } } };
 
 function generateId(): string {
   return `b_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
@@ -122,6 +123,22 @@ export function blobsReducer(state: Blob[], action: BlobsAction): Blob[] {
       return state.map((b) =>
         b.id === id ? { ...b, width, height, updatedAt: now } : b
       );
+    }
+    case "MERGE_BLOBS": {
+      const { sourceId, targetId, prependSource } = action.payload;
+      const source = state.find((b) => b.id === sourceId);
+      const target = state.find((b) => b.id === targetId);
+      if (!source || !target || sourceId === targetId || source.hidden || target.hidden) return state;
+      const parts = prependSource
+        ? [source.content, target.content]
+        : [target.content, source.content];
+      const mergedContent = parts.filter((s) => s != null && s !== "").join("\n\n");
+      const now = new Date().toISOString();
+      return state
+        .filter((b) => b.id !== sourceId)
+        .map((b) =>
+          b.id === targetId ? { ...b, content: mergedContent, updatedAt: now } : b
+        );
     }
     default:
       return state;

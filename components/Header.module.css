@@ -1,4 +1,4 @@
-/* Layer 5 & 6: main menu, account bubble, and their popups */
+/* Layer above popup/selection so main menu and account menu always receive pointer events */
 .header {
   position: fixed;
   top: 0;
@@ -8,12 +8,16 @@
   align-items: flex-start;
   justify-content: space-between;
   padding: 12px;
-  z-index: 10;
+  z-index: 20;
+  /* Transparent header area must not eat pointer events on blobs behind it */
+  pointer-events: none;
 }
 
 .left,
 .right {
   position: relative;
+  /* Re-enable events for the actual interactive areas */
+  pointer-events: auto;
 }
 
 .mainMenu {
@@ -76,11 +80,6 @@
   justify-content: space-between;
   gap: 12px;
   padding: 8px 0;
-  border-bottom: 1px solid var(--menu-border, rgba(0, 0, 0, 0.06));
-}
-
-.menuSection:last-of-type {
-  border-bottom: none;
 }
 
 .menuLabel {

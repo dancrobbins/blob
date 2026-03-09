@@ -128,13 +128,23 @@ function escapeHtml(s: string): string {
 /** Common bullet chars and list markers we recognize when pasting from external apps. */
 const EXTERNAL_BULLET_PATTERN = /^[\s]*([•·▪▸►\-\*]\s+)/;
 
+/** Match a string that is a single URL (http or https, no leading/trailing whitespace or newlines). */
+const SINGLE_URL_PATTERN = /^https?:\/\/\S+$/;
+
+function formatUrlAsMarkdownLink(url: string): string {
+  const u = url.trim();
+  return u ? `[${u}](${u})` : u;
+}
+
 /**
  * Parse pasted HTML or plain text from another app into BlobLine[].
  * Detects list items (ul/ol/li) and leading bullets/dashes; maps indentation to indent style.
+ * If pasted text is a single URL, formats it as a markdown link [url](url) so it is clickable in markdown view/copy.
  * Prefers plain text when it's much longer than HTML-derived content so we don't drop pasted
  * text (e.g. copying from a page that puts a short list in HTML but full selection in plain).
  */
 export function parsePastedContent(html: string | null, plainText: string): BlobLine[] {
+  const plain = (plainText ?? "").trim();
   const plainLen = (plainText ?? "").length;
   if (html && html.trim().length > 0) {
     const fromHtml = parseHtmlToList(html);
@@ -143,6 +153,10 @@ export function parsePastedContent(html: string | null, plainText: string): Blob
       // Use HTML only if it captured a reasonable share of content; otherwise plain text has the full paste
       if (plainLen <= 0 || htmlTextLen >= plainLen * 0.5) return fromHtml;
     }
+  }
+  // If the whole paste is a single URL, insert as markdown link so it's clickable
+  if (plain.length > 0 && !plain.includes("\n") && SINGLE_URL_PATTERN.test(plain)) {
+    return [{ text: formatUrlAsMarkdownLink(plain), style: "bullet" as const }];
   }
   return parsePlainTextToList(plainText);
 }
@@ -166,11 +180,16 @@ function parsePlainTextToList(plain: string): BlobLine[] {
     const trimmed = raw.trimStart();
     const bulletMatch = trimmed.match(EXTERNAL_BULLET_PATTERN);
     if (bulletMatch) {
-      return { text: trimmed.slice(bulletMatch[1].length), style: "bullet" as const };
+      const text = trimmed.slice(bulletMatch[1].length);
+      return {
+        text: SINGLE_URL_PATTERN.test(text.trim()) ? formatUrlAsMarkdownLink(text.trim()) : text,
+        style: "bullet" as const,
+      };
     }
     const leadingSpaces = raw.match(/^(\s+)/)?.[1].length ?? 0;
-    const text = raw.replace(/^\s+/, "");
+    let text = raw.replace(/^\s+/, "");
     if (leadingSpaces >= 2) return { text, style: "indent" as const };
+    if (SINGLE_URL_PATTERN.test(text.trim())) text = formatUrlAsMarkdownLink(text.trim());
     return { text, style: "bullet" as const };
   });
 }
