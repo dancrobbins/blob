@@ -39,6 +39,7 @@ import { loadPreferences, savePreferences, clearPreferences, mergeCloudPreferenc
 import type { CameraPosition, Preferences } from "@/lib/types";
 import { supabase } from "@/lib/supabase";
 import { MergeDialog } from "@/components/MergeDialog";
+import { syncLog, contentCount } from "@/lib/sync-log";
 
 const UNDO_HISTORY_MAX = 50;
 
@@ -58,6 +59,8 @@ type BlobsContextValue = {
   preferences: Preferences;
   setPreferences: (p: Preferences | ((prev: Preferences) => Preferences)) => void;
   userId: string | null;
+  /** Current user's email (from auth session). Used for feature gating (e.g. CopyID for specific user). */
+  userEmail: string | null;
   /** Whose board we're viewing. Today = userId; later can be set by share link (e.g. /view/:ownerId). Used for presence channel. */
   boardOwnerId: string | null;
   isLoading: boolean;
@@ -158,6 +161,7 @@ export function BlobsProvider({ children }: { children: ReactNode }) {
     loadPreferences()
   );
   const [userId, setUserId] = React.useState<string | null>(null);
+  const [userEmail, setUserEmail] = React.useState<string | null>(null);
   const [isLoading, setIsLoading] = React.useState(true);
   const anyMenuOpenRef = React.useRef(false);
   const menuOpenCountRef = React.useRef(0);
@@ -173,6 +177,8 @@ export function BlobsProvider({ children }: { children: ReactNode }) {
   const positionSaveTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const blobsRef = React.useRef<Blob[]>(blobs);
   const syncingRef = React.useRef(false);
+  /** True once we've successfully read cloud or pushed local after fetch failed; prevents overwriting cloud with [] when we never read it. */
+  const cloudKnownRef = React.useRef(false);
   const prevUserIdRef = React.useRef<string | null>(null);
   const deletedIdsRef = React.useRef<Record<string, string>>({});
   const [blobbyLog, setBlobbyLog] = React.useState("");
@@ -228,8 +234,10 @@ export function BlobsProvider({ children }: { children: ReactNode }) {
     // Record tombstones for any blob deletion so remote browsers can't resurrect them.
     const now = new Date().toISOString();
     if (action.type === "DELETE_BLOB") {
+      syncLog("dispatch:delete", { id: action.payload, blobCountBefore: blobsRef.current.length });
       deletedIdsRef.current = { ...deletedIdsRef.current, [action.payload]: now };
     } else if (action.type === "DELETE_BLOBS") {
+      syncLog("dispatch:delete-many", { ids: action.payload, blobCountBefore: blobsRef.current.length });
       const additions: Record<string, string> = {};
       for (const id of action.payload) additions[id] = now;
       deletedIdsRef.current = { ...deletedIdsRef.current, ...additions };
@@ -299,9 +307,11 @@ export function BlobsProvider({ children }: { children: ReactNode }) {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((_event, session) => {
       setUserId(session?.user?.id ?? null);
+      setUserEmail(session?.user?.email ?? null);
     });
     supabase.auth.getSession().then(({ data: { session } }) => {
       setUserId(session?.user?.id ?? null);
+      setUserEmail(session?.user?.email ?? null);
     });
     return () => subscription.unsubscribe();
   }, []);
@@ -319,10 +329,13 @@ export function BlobsProvider({ children }: { children: ReactNode }) {
     clearSaveTimeout();
     const run = async () => {
       try {
-        console.log("[blob sync] user logged in, fetching cloud blobs for", userId);
+        cloudKnownRef.current = false;
+        syncLog("login:start", { userId: userId.slice(0, 8) + "…" });
         const cloud = await fetchUserBlobs(userId);
         const current = loadBlobsFromStorage();
-        console.log("[blob sync] cloud blobs:", cloud?.blobs?.length ?? 0, "local blobs:", current.length);
+        const cloudCount = cloud?.blobs?.length ?? 0;
+        const localCount = current.length;
+        syncLog("login:fetch", { cloudCount, localCount, cloudContentCount: cloud ? contentCount(cloud.blobs) : 0, localContentCount: contentCount(current) });
 
         const currentPrefs = loadPreferences();
         const mergedPrefs = cloud?.preferences
@@ -346,32 +359,53 @@ export function BlobsProvider({ children }: { children: ReactNode }) {
 
         let pullIntoCloud = true;
         if (current.length > 0) {
+          syncLog("login:merge-dialog-shown", { cloudCount, localCount });
           setShowMergeDialog(true);
           pullIntoCloud = await new Promise<boolean>((resolve) => {
             mergeDialogResolveRef.current = resolve;
           });
+          syncLog("login:merge-dialog-result", { choice: pullIntoCloud ? "pull" : "discard", cloudCount, localCount });
         }
 
         if (!pullIntoCloud) {
           // User chose to discard local: use cloud only (or empty), no cache
-          dispatch({ type: "SET_BLOBS", payload: cloud?.blobs ?? [] });
+          const cloudBlobs = cloud?.blobs ?? [];
+          syncLog("login:discard-local", { cloudCount: cloudBlobs.length, cloudContentCount: contentCount(cloudBlobs) });
+          dispatch({ type: "SET_BLOBS", payload: cloudBlobs });
           setMergedFlag(userId, true);
           if (cloud?.updatedAt) setLastPushTime(userId, cloud.updatedAt, true);
           return;
         }
 
         if (!cloud) {
-          console.log("[blob sync] no cloud data, pushing local to cloud");
-          await upsertUserBlobs(userId, current, mergedPrefs, blobbyLogRef.current, getCameraToWrite(), deletedIdsRef.current);
+          // Fetch failed (network/RLS/etc). Use local in memory; only push to cloud if we have local data.
+          // Never overwrite cloud with empty when we didn't successfully read cloud — that would wipe real data.
+          syncLog("login:no-cloud-push-local", { localCount: current.length, localContentCount: contentCount(current), willPush: current.length > 0 });
+          dispatch({ type: "SET_BLOBS", payload: current });
+          if (current.length > 0) {
+            cloudKnownRef.current = true;
+            await upsertUserBlobs(userId, current, mergedPrefs, blobbyLogRef.current, getCameraToWrite(), deletedIdsRef.current);
+          }
           if (!getMergedFlag(userId, true)) setMergedFlag(userId, true);
           return;
         }
+        cloudKnownRef.current = true;
 
         const mergedBlobs = mergeLocalAndCloudBlobs(current, cloud.blobs, deletedIdsRef.current);
-        console.log("[blob sync] merged blobs:", mergedBlobs.length);
+        const tombstoneCount = Object.keys(deletedIdsRef.current).length;
+        syncLog("login:merge-result", {
+          mergedCount: mergedBlobs.length,
+          cloudCount: cloud.blobs.length,
+          localCount: current.length,
+          tombstoneCount,
+          mergedContentCount: contentCount(mergedBlobs),
+          cloudContentCount: contentCount(cloud.blobs),
+          localContentCount: contentCount(current),
+        });
         dispatch({ type: "SET_BLOBS", payload: mergedBlobs });
         setMergedFlag(userId, true);
         await upsertUserBlobs(userId, mergedBlobs, mergedPrefs, cloud.blobbyLog ?? blobbyLogRef.current, getCameraToWrite(), deletedIdsRef.current);
+        syncLog("login:push-to-cloud", { count: mergedBlobs.length, contentCount: contentCount(mergedBlobs) });
       } finally {
         syncingRef.current = false;
         clearAllLocalBlobData();
@@ -388,6 +422,9 @@ export function BlobsProvider({ children }: { children: ReactNode }) {
     const isAccountSwitch = userId !== null && prevUserId !== null && userId !== prevUserId;
 
     if (isLogout || isAccountSwitch) {
+      const wasCount = blobsRef.current.length;
+      cloudKnownRef.current = false;
+      syncLog("logout:clear", { wasCount, reason: isLogout ? "logout" : "account-switch" });
       clearSaveTimeout();
       if (positionSaveTimeoutRef.current) {
         clearTimeout(positionSaveTimeoutRef.current);
@@ -415,7 +452,12 @@ export function BlobsProvider({ children }: { children: ReactNode }) {
       return;
     }
     if (syncingRef.current) {
-      console.log("[blob sync] persist: skipping cloud save (syncing)");
+      syncLog("persist:skipped-syncing", {});
+      return;
+    }
+    // Never overwrite cloud with empty when we never successfully read cloud (e.g. fetch failed at login).
+    if (blobs.length === 0 && !cloudKnownRef.current) {
+      syncLog("persist:skipped-empty-unknown-cloud", {});
       return;
     }
 
@@ -424,6 +466,7 @@ export function BlobsProvider({ children }: { children: ReactNode }) {
     if (action === "major") {
       clearSaveTimeout();
       lastActionRef.current = null;
+      syncLog("persist:upsert", { count: blobs.length, contentCount: contentCount(blobs), action: "major" });
       upsertUserBlobs(userId, blobs, preferences, blobbyLogRef.current, camera, deletedIdsRef.current);
       return; // skip debounced save this run
     }
@@ -433,7 +476,10 @@ export function BlobsProvider({ children }: { children: ReactNode }) {
         positionSaveTimeoutRef.current = null;
         lastActionRef.current = null;
         clearSaveTimeout();
-        upsertUserBlobs(userId, blobsRef.current, preferences, blobbyLogRef.current, getCameraToWrite(), deletedIdsRef.current);
+        const b = blobsRef.current;
+        if (b.length === 0 && !cloudKnownRef.current) return;
+        syncLog("persist:upsert", { count: b.length, contentCount: contentCount(b), action: "position" });
+        upsertUserBlobs(userId, b, preferences, blobbyLogRef.current, getCameraToWrite(), deletedIdsRef.current);
       }, POSITION_SAVE_DEBOUNCE_MS);
     }
 
@@ -447,28 +493,46 @@ export function BlobsProvider({ children }: { children: ReactNode }) {
     const poll = async () => {
       const cloud = await fetchUserBlobs(userId);
       if (!cloud) return;
+      cloudKnownRef.current = true;
+      const latestLocal = blobsRef.current;
+      const lastPush = getLastPushTime(userId, true);
+      syncLog("poll:fetch", {
+        cloudCount: cloud.blobs.length,
+        localCount: latestLocal.length,
+        cloudContentCount: contentCount(cloud.blobs),
+        localContentCount: contentCount(latestLocal),
+        cloudUpdatedAt: cloud.updatedAt ?? null,
+        lastPush,
+      });
       // Merge any tombstones from the cloud into our local set so we can apply them on the next write
       if (cloud.deletedIds && Object.keys(cloud.deletedIds).length > 0) {
         deletedIdsRef.current = mergeDeletedIds(deletedIdsRef.current, cloud.deletedIds);
       }
-      const latestLocal = blobsRef.current;
       let merged = mergeLocalAndCloudBlobs(latestLocal, cloud.blobs, deletedIdsRef.current);
       // When cloud is ahead of our last push, apply remote deletions: drop any blob not in cloud.
-      const lastPush = getLastPushTime(userId, true);
       if (
         cloud.updatedAt &&
         lastPush &&
         new Date(cloud.updatedAt) > new Date(lastPush)
       ) {
         const cloudIds = new Set(cloud.blobs.map((b) => b.id));
+        const beforeFilter = merged;
         merged = merged.filter((b) => cloudIds.has(b.id));
+        const droppedIds = beforeFilter.filter((b) => !cloudIds.has(b.id)).map((b) => b.id);
+        syncLog("poll:remote-ahead-drop", {
+          droppedIds,
+          mergedCountBefore: beforeFilter.length,
+          mergedCountAfter: merged.length,
+          contentCountBefore: contentCount(beforeFilter),
+          contentCountAfter: contentCount(merged),
+        });
       }
       if (!blobsEqual(merged, latestLocal)) {
-        console.log("[blob sync] poll: cloud has updates, merging", merged.length, "blobs");
+        syncLog("poll:merge-applied", { mergedCount: merged.length, localCountWas: latestLocal.length, mergedContentCount: contentCount(merged) });
         dispatchReducer({ type: "SET_BLOBS", payload: merged });
         // Logged-in users: do not cache in browser
       } else {
-        console.log("[blob sync] poll: cloud fetch ok, no changes");
+        syncLog("poll:no-change", { count: latestLocal.length, contentCount: contentCount(latestLocal) });
       }
       // Sync preferences from cloud (theme, blobby color, etc.) — in memory only when logged in
       if (cloud.preferences) {
@@ -555,6 +619,7 @@ export function BlobsProvider({ children }: { children: ReactNode }) {
     preferences,
     setPreferences,
     userId,
+    userEmail,
     boardOwnerId: userId,
     isLoading,
     anyMenuOpenRef,

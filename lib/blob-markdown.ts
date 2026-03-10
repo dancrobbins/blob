@@ -162,6 +162,11 @@ export function isBlobContentEmpty(content: string | undefined): boolean {
   return lines.every((line) => !(line.text ?? "").trim());
 }
 
+/** True if the lines contain at least one empty line (blank or bullet-only). */
+export function hasEmptyLines(lines: BlobLine[]): boolean {
+  return lines.some((line) => (line.text ?? "").trim() === "");
+}
+
 /** Remove lines that are blank or only a bullet (empty line text). Returns at least one empty bullet line. */
 export function removeEmptyLines(lines: BlobLine[]): BlobLine[] {
   const filtered = lines.filter((line) => (line.text ?? "").trim() !== "");

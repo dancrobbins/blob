@@ -20,6 +20,7 @@ export function SelectionOverlay({
   onHide,
   onCopyAll,
   onRemoveEmptyLines,
+  hasEmptyLinesInSelection = true,
   allSelectedLocked,
   menuRef,
   onDragStart,
@@ -39,6 +40,8 @@ export function SelectionOverlay({
   onCopyAll?: () => void;
   /** Remove empty/bullet-only lines from all selected blobs. */
   onRemoveEmptyLines?: () => void;
+  /** When false, "Remove empty lines" is disabled (no selected blob has empty lines). */
+  hasEmptyLinesInSelection?: boolean;
   /** When true, show Unlock; otherwise show Lock. */
   allSelectedLocked: boolean;
   menuRef: React.RefObject<HTMLDivElement | null>;
@@ -214,7 +217,7 @@ export function SelectionOverlay({
                 className={styles.selectionMenuItem}
                 role="menuitem"
                 data-testid="selection-menu-remove-empty-lines"
-                disabled={allSelectedLocked}
+                disabled={allSelectedLocked || !hasEmptyLinesInSelection}
                 onClick={() => {
                   onRemoveEmptyLines();
                   setMenuOpen(false);

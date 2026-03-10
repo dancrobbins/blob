@@ -192,6 +192,22 @@
   word-break: break-word;
 }
 
+/* When card has fixed height (user resized on desktop or mobile focus): content scrolls with vertical scrollbar */
+.card[data-fixed-height] {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.card[data-fixed-height] .content {
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+.card[data-fixed-height] .contentRaw {
+  min-height: 0;
+  overflow-y: auto;
+}
+
 .contentRaw {
   flex: 1;
   min-width: 0;

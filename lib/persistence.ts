@@ -1,5 +1,6 @@
 import type { Blob, CameraPosition, Preferences } from "./types";
 import { supabase } from "./supabase";
+import { syncLog, contentCount } from "./sync-log";
 
 const BLOB_STORAGE_KEY = "blob_notes_anonymous";
 const BLOB_MERGED_PREFIX = "blob_merged_";
@@ -192,6 +193,7 @@ export async function fetchUserBlobs(userId: string): Promise<{
     .eq("user_id", userId)
     .single();
   if (error) {
+    syncLog("error:fetchUserBlobs", { message: error.message, code: error.code });
     console.error("[blob sync] fetchUserBlobs error:", error.message, error.code);
     return null;
   }
@@ -259,6 +261,7 @@ export async function upsertUserBlobs(
     { onConflict: "user_id" }
   );
   if (error) {
+    syncLog("error:upsertUserBlobs", { message: error.message, code: error.code });
     console.error("[blob sync] upsertUserBlobs error:", error.message, error.code);
     return false;
   }
@@ -337,6 +340,7 @@ export function debouncedSaveToCloud(
   if (saveTimeout) clearTimeout(saveTimeout);
   saveTimeout = setTimeout(async () => {
     saveTimeout = null;
+    syncLog("persist:upsert", { count: blobs.length, contentCount: contentCount(blobs), action: "debounce" });
     const ok = await upsertUserBlobs(userId, blobs, preferences, blobbyLog, camera, deletedIds);
     if (!ok) console.error("[blob sync] debouncedSaveToCloud: upsert failed");
   }, DEBOUNCE_MS);

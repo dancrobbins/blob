@@ -66,8 +66,16 @@ export function PresenceProvider({ children }: { children: ReactNode }) {
   const pendingSendRef = useRef<{ worldX: number; worldY: number } | null>(null);
   /** Hot-path callback — called directly without setState when a remote cursor moves. */
   const onCursorMoveRef = useRef<CursorMoveCallback | null>(null);
-  /** Session IDs from last state update; only call setOtherPresences when this set changes (join/leave). */
-  const previousSessionIdsRef = useRef<Set<string>>(new Set());
+  /**
+   * Stable arrival-order map: sessionId → order number (1-based) within that userId.
+   * Built on join, cleared on leave/teardown. This keeps numbers stable even when
+   * the presence state is re-read (sync events don't renumber existing sessions).
+   */
+  const sessionArrivalOrderRef = useRef<Map<string, number>>(new Map());
+  /** Per-userId counter so we know what the next arrival-order number is. */
+  const userSessionCounterRef = useRef<Map<string, number>>(new Map());
+  /** Last-rendered presence list (for label-change detection). */
+  const previousPresenceRef = useRef<OtherPresence[]>([]);
 
   const setOnCursorMove = useCallback((cb: CursorMoveCallback | null) => {
     onCursorMoveRef.current = cb;
@@ -122,55 +130,77 @@ export function PresenceProvider({ children }: { children: ReactNode }) {
     const channel = client.channel(channelName);
     channelRef.current = channel;
 
+    /**
+     * Record any newly-seen sessions in arrival order (per userId).
+     * Called on join events so numbers are assigned at first sight and never change.
+     */
+    function recordArrivals(stateSnapshot: ReturnType<typeof channel.presenceState>) {
+      for (const key of Object.keys(stateSnapshot)) {
+        const joins = stateSnapshot[key] as Array<Record<string, unknown>>;
+        if (!Array.isArray(joins)) continue;
+        for (const p of joins) {
+          const sid = (p.sessionId as string) ?? "";
+          if (!sid || sessionArrivalOrderRef.current.has(sid)) continue;
+          const uid = (p.userId as string) ?? "";
+          const prev = userSessionCounterRef.current.get(uid) ?? 0;
+          const next = prev + 1;
+          userSessionCounterRef.current.set(uid, next);
+          sessionArrivalOrderRef.current.set(sid, next);
+        }
+      }
+    }
+
     function buildPresenceList() {
       const state = channel.presenceState();
+
+      // Collect full presence so we know total per-user counts.
       const allPresences: Array<{ sessionId: string; userId: string; displayName: string }> = [];
       for (const key of Object.keys(state)) {
         const joins = state[key] as Array<Record<string, unknown>>;
         if (!Array.isArray(joins)) continue;
         for (const p of joins) {
-          const sid = (p.sessionId as string) ?? "";
-          const uid = (p.userId as string) ?? "";
-          const name = (p.displayName as string) ?? "Guest";
-          allPresences.push({ sessionId: sid, userId: uid, displayName: name });
+          allPresences.push({
+            sessionId: (p.sessionId as string) ?? "",
+            userId: (p.userId as string) ?? "",
+            displayName: (p.displayName as string) ?? "Guest",
+          });
         }
       }
-      const byUser = new Map<string, typeof allPresences>();
+
+      // Count sessions per user across the full state.
+      const userSessionCount = new Map<string, number>();
       for (const p of allPresences) {
-        const arr = byUser.get(p.userId) ?? [];
-        arr.push(p);
-        byUser.set(p.userId, arr);
+        userSessionCount.set(p.userId, (userSessionCount.get(p.userId) ?? 0) + 1);
       }
-      const sessionIdToLabel = new Map<string, string>();
-      for (const [, arr] of byUser) {
-        arr.sort((a, b) => a.sessionId.localeCompare(b.sessionId));
-        arr.forEach((p, i) => {
-          sessionIdToLabel.set(
-            p.sessionId,
-            arr.length > 1 ? `${p.displayName} ${i + 1}` : p.displayName
-          );
-        });
-      }
+
       const list: OtherPresence[] = [];
       for (const key of Object.keys(state)) {
         const joins = state[key] as Array<Record<string, unknown>>;
         if (!Array.isArray(joins)) continue;
         for (const p of joins) {
           const sid = p.sessionId as string | undefined;
-          if (sid === sessionId) continue;
+          if (!sid || sid === sessionId) continue;
           const uid = (p.userId as string) ?? "";
           const name = (p.displayName as string) ?? "Guest";
           const avatar = (p.avatarUrl as string) ?? null;
           const wx = typeof p.worldX === "number" ? p.worldX : 0;
           const wy = typeof p.worldY === "number" ? p.worldY : 0;
+
+          const totalForUser = userSessionCount.get(uid) ?? 1;
+          const arrivalNum = sessionArrivalOrderRef.current.get(sid);
+          const displayLabel =
+            totalForUser > 1 && arrivalNum !== undefined
+              ? `${name} ${arrivalNum}`
+              : name;
+
           list.push({
-            sessionId: sid ?? "",
+            sessionId: sid,
             userId: uid,
             displayName: name,
             avatarUrl: avatar,
             worldX: wx,
             worldY: wy,
-            displayLabel: sessionIdToLabel.get(sid ?? "") ?? name,
+            displayLabel,
           });
         }
       }
@@ -184,34 +214,38 @@ export function PresenceProvider({ children }: { children: ReactNode }) {
           cb(p.sessionId, p.worldX, p.worldY);
         }
       }
-      const nextIds = new Set(list.map((p) => p.sessionId));
-      const prev = previousSessionIdsRef.current;
-      const idsChanged =
-        prev.size !== nextIds.size || list.some((p) => !prev.has(p.sessionId));
-      if (idsChanged) {
-        previousSessionIdsRef.current = nextIds;
+      const prev = previousPresenceRef.current;
+      const prevById = new Map(prev.map((p) => [p.sessionId, p]));
+      const rosterChanged =
+        prev.length !== list.length ||
+        list.some((p) => {
+          const was = prevById.get(p.sessionId);
+          return !was || was.displayLabel !== p.displayLabel;
+        });
+      if (rosterChanged) {
+        previousPresenceRef.current = list;
         setOtherPresences([...list]);
       }
     }
 
     function onSync() {
+      const state = channel.presenceState();
+      recordArrivals(state);
       const list = buildPresenceList();
       applyPresenceList(list);
     }
 
-    function onPresenceChange(payload: { event: string }) {
-      if (payload.event === "sync") {
-        onSync();
-        return;
-      }
+    function onPresenceChange() {
+      const state = channel.presenceState();
+      recordArrivals(state);
       const list = buildPresenceList();
       applyPresenceList(list);
     }
 
     channel
       .on("presence", { event: "sync" }, onSync)
-      .on("presence", { event: "join" }, onPresenceChange.bind(null, { event: "join" }))
-      .on("presence", { event: "leave" }, onPresenceChange.bind(null, { event: "leave" }))
+      .on("presence", { event: "join" }, onPresenceChange)
+      .on("presence", { event: "leave" }, onPresenceChange)
       .subscribe(async (status) => {
         if (status === "SUBSCRIBED") {
           client.auth.getSession().then(({ data: { session } }) => {
@@ -237,7 +271,9 @@ export function PresenceProvider({ children }: { children: ReactNode }) {
         clearTimeout(sendTimerRef.current);
         sendTimerRef.current = null;
       }
-      previousSessionIdsRef.current = new Set();
+      sessionArrivalOrderRef.current = new Map();
+      userSessionCounterRef.current = new Map();
+      previousPresenceRef.current = [];
       client.removeChannel(channel);
       channelRef.current = null;
       lastPayloadRef.current = null;

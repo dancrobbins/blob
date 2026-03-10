@@ -1,6 +1,6 @@
 {
   "version": "1.0.0",
   "updates": [
-    "While waiting for the Blobby summary, Blobby cycles through the \"look\" animations; when the summary returns, Blobby returns to idle animations."
+    "Desktop: Blobby chat positioned from Blobby's upper-right corner."
   ]
 }

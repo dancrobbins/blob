@@ -10,12 +10,13 @@ import { AppErrorBoundary } from "@/components/AppErrorBoundary";
 import { ConnectivityGuard } from "@/components/ConnectivityGuard";
 import { E2ESyncOverlay } from "@/components/e2e/E2ESyncOverlay";
 
-/** Allow pinch-zoom on iOS Safari so two-finger gestures are treated as zoom, not "pull out of tab". */
+/** Lock scale so the app doesn’t zoom or shift in the browser; canvas has its own pinch-zoom. Reduces iOS Safari “move entire app” and keeps menu/avatar visible. */
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
-  maximumScale: 5,
-  userScalable: true,
+  maximumScale: 1,
+  userScalable: false,
+  viewportFit: "cover",
 };
 
 export const metadata: Metadata = {

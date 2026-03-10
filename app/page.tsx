@@ -15,7 +15,7 @@ import { usePresence } from "@/contexts/PresenceContext";
 import { getLastBlobbyLogEntry } from "@/lib/persistence";
 import { OtherCursors } from "@/components/OtherCursors";
 import { blobToPlainText } from "@/lib/blob-lines";
-import { linesToMarkdown, markdownToLines, removeEmptyLines, isBlobContentEmpty } from "@/lib/blob-markdown";
+import { linesToMarkdown, markdownToLines, removeEmptyLines, hasEmptyLines, isBlobContentEmpty } from "@/lib/blob-markdown";
 import { getBlobBounds, SHOW_ALL_CONTROLS_LEFT_PX } from "@/lib/blob-constants";
 import { dispatchCloseMenus } from "@/lib/menu-close-event";
 import { gapBetweenRects, getMergeCueRect, overlapArea, pointInRect } from "@/lib/blob-boundary-path";
@@ -26,13 +26,14 @@ import styles from "./page.module.css";
 
 const BLOBBY_BACKER_FILE = "blobby backer L.svg";
 
+/** Single container for Blobby + backer; only the slider (and platform half in mobile) sets size. */
+const BLOBBY_CONTAINER_BOTTOM_PX = 74;
+
 function BlobbyBacker({
-  sizePx,
   onTap,
   onPointerEnter,
   onPointerLeave,
 }: {
-  sizePx: number;
   onTap: () => void;
   onPointerEnter?: () => void;
   onPointerLeave?: () => void;
@@ -46,18 +47,15 @@ function BlobbyBacker({
       onPointerEnter={onPointerEnter}
       onPointerLeave={onPointerLeave}
       style={{
-        position: "fixed",
-        left: "50%",
-        bottom: 74,
-        transform: "translate(-50%, 50%)",
-        width: sizePx,
-        height: sizePx,
+        position: "absolute",
+        inset: 0,
+        width: "100%",
+        height: "100%",
         padding: 0,
         border: "none",
         borderRadius: "50%",
         background: "transparent",
         cursor: "pointer",
-        zIndex: 2,
         display: "block",
       }}
     >
@@ -89,6 +87,23 @@ const CLOSE_THRESHOLD = 80;
 const VERY_CLOSE_THRESHOLD = 24;
 /** Pixels to pan per frame when cursor is at viewport edge during blob drag. */
 const DRAG_EDGE_PAN_SPEED = 12;
+
+/** Mobile focus: target screen font size (px) so blob text is readable at user’s default. */
+const MOBILE_FOCUS_SCREEN_FONT_PX = 16;
+/** Blob content font in world px (0.9375rem). */
+const MOBILE_FOCUS_WORLD_FONT_PX = 15;
+/** Horizontal padding (each side) so blob doesn’t touch screen edges. */
+const MOBILE_FOCUS_HORIZ_PADDING = 24;
+/** Reserved space (px) for header + top/bottom padding when fitting blob height to viewport. */
+const MOBILE_FOCUS_HEADER_PX = 68;
+/** Height (px) of the mobile top bar; same as header height so the bar fully encompasses menu and avatar. */
+const MOBILE_TOP_BAR_HEIGHT_PX = MOBILE_FOCUS_HEADER_PX;
+const MOBILE_FOCUS_VERT_PADDING_PX = 24;
+/** Bottom offset (px) before blobby backer; add effectiveBackerSize for full reserved bottom. */
+const MOBILE_FOCUS_BOTTOM_OFFSET_PX = 74;
+
+const MIN_BLOB_W = 120;
+const MIN_BLOB_H = 80;
 
 type Bounds = { left: number; top: number; width: number; height: number };
 
@@ -167,6 +182,8 @@ export default function Home() {
   const hadFocusBlobAtPointerDownRef = useRef(false);
   /** Ref for user-focused blob (not state) so we don't trigger autoFocus effect when user taps existing blob. */
   const focusedBlobIdRef = useRef<string | null>(null);
+  /** When we apply mobile focus, store the blob's desktop size so we can restore on switch back to desktop. */
+  const preMobileFocusBlobRef = useRef<{ blobId: string; width: number; height: number } | null>(null);
   /** True once we've committed to either pan or selection for this gesture. */
   const gestureChosenRef = useRef(false);
   const activePointersRef = useRef<Map<number, { clientX: number; clientY: number }>>(new Map());
@@ -709,10 +726,12 @@ export default function Home() {
     const dy = e.clientY - dragStart.current.y;
     const distance = Math.sqrt(dx * dx + dy * dy);
     const elapsed = Date.now() - pointerDownTimeRef.current;
-    // First time past threshold: choose pan vs rectangle select by hold time.
+    // First time past threshold: choose pan vs rectangle select. In mobile mode, no pan and no rectangle drag select.
     if (!gestureChosenRef.current && distance > DRAG_THRESHOLD) {
       gestureChosenRef.current = true;
-      if (elapsed < HOLD_DELAY_MS) {
+      if (preferences.platformMode === "mobile") {
+        // Mobile: one-finger drag does nothing (no pan, no rectangle select).
+      } else if (elapsed < HOLD_DELAY_MS) {
         isPanningRef.current = true;
         setIsPanning(true);
       } else {
@@ -741,7 +760,7 @@ export default function Home() {
       selectionRectRef.current = rect;
       setSelectionRect(rect);
     }
-  }, []);
+  }, [preferences.platformMode]);
 
   const handlePointerUp = useCallback(
     (e: React.PointerEvent<HTMLDivElement>) => {
@@ -783,7 +802,22 @@ export default function Home() {
       isDrawingSelection.current = false;
       setSelectionRect(null);
       if (hadPanOrZoom || menuWasOpenAtPointerDown.current) return;
-      if (target.closest("[data-blob-card]") || target.closest("[data-blob-controls]") || target.closest("header")) return;
+      const blobCard = target.closest<HTMLElement>("[data-blob-card]");
+      const blobControls = target.closest<HTMLElement>("[data-blob-controls]");
+      const blobIdFromCard = blobCard?.getAttribute("data-blob-id") ?? blobControls?.closest<HTMLElement>("[data-blob-card]")?.getAttribute("data-blob-id");
+      if (blobCard || blobControls) {
+        if (blobIdFromCard) {
+          setSelectedIds((prev) => {
+            if (e.ctrlKey || e.metaKey) {
+              if (prev.includes(blobIdFromCard)) return prev.filter((id) => id !== blobIdFromCard);
+              return [...prev, blobIdFromCard];
+            }
+            return [blobIdFromCard];
+          });
+        }
+        return;
+      }
+      if (target.closest("header")) return;
       const under = document.elementFromPoint(e.clientX, e.clientY);
       if (under?.closest?.("[data-blobby-area]")) return;
 
@@ -893,24 +927,36 @@ export default function Home() {
     [dispatch, scale, mergePossible, closeTargetId, liveMergeState, blobs]
   );
 
-  const handleWheel = useCallback((e: WheelEvent) => {
-    e.preventDefault();
-    const p = panRef.current;
-    const s = scaleRef.current;
-    const delta = -e.deltaY * WHEEL_ZOOM_SENSITIVITY;
-    const newScale = Math.min(MAX_SCALE, Math.max(MIN_SCALE, s * (1 + delta)));
-    // World point under cursor
-    const worldX = (e.clientX - p.x) / s;
-    const worldY = (e.clientY - p.y) / s;
-    // New pan keeps that world point fixed under the cursor
-    const newPanX = e.clientX - worldX * newScale;
-    const newPanY = e.clientY - worldY * newScale;
-    panRef.current = { x: newPanX, y: newPanY };
-    scaleRef.current = newScale;
-    setPan({ x: newPanX, y: newPanY });
-    setScale(newScale);
-    setIsShowingAll(false);
-  }, []);
+  const handleWheel = useCallback(
+    (e: WheelEvent) => {
+      // In mobile mode (even on desktop), route wheel over a blob to that blob's scrollable content
+      if (preferences.platformMode === "mobile") {
+        const card = (e.target as Element).closest("[data-blob-card]");
+        const inner = card?.querySelector("[data-blob-card-inner][data-mobile-fill]");
+        const scrollEl = inner?.querySelector("[data-testid=\"blob-content\"]") as HTMLElement | null;
+        if (scrollEl) {
+          scrollEl.scrollTop += e.deltaY;
+          e.preventDefault();
+          return;
+        }
+      }
+      e.preventDefault();
+      const p = panRef.current;
+      const s = scaleRef.current;
+      const delta = -e.deltaY * WHEEL_ZOOM_SENSITIVITY;
+      const newScale = Math.min(MAX_SCALE, Math.max(MIN_SCALE, s * (1 + delta)));
+      const worldX = (e.clientX - p.x) / s;
+      const worldY = (e.clientY - p.y) / s;
+      const newPanX = e.clientX - worldX * newScale;
+      const newPanY = e.clientY - worldY * newScale;
+      panRef.current = { x: newPanX, y: newPanY };
+      scaleRef.current = newScale;
+      setPan({ x: newPanX, y: newPanY });
+      setScale(newScale);
+      setIsShowingAll(false);
+    },
+    [preferences.platformMode]
+  );
 
   useEffect(() => {
     const el = canvasRef.current;
@@ -1052,6 +1098,77 @@ export default function Home() {
     persistCamera({ panX: newPanX, panY: newPanY, scale: newScale }, { immediate: true });
   }, [visibleBlobs, selectedIds, persistCamera]);
 
+  /** In mobile mode, when user taps into a blob: zoom to default font size, pan so blob top-left is at app top-left, then resize blob to fit viewport. */
+  const handleMobileFocusBlob = useCallback(
+    (blobId: string) => {
+      const canvas = canvasRef.current;
+      const blob = blobs.find((b) => b.id === blobId);
+      if (!canvas || !blob || blob.locked) return;
+      const viewportWidth = canvas.clientWidth;
+      const viewportHeight = canvas.clientHeight;
+      const newScale = MOBILE_FOCUS_SCREEN_FONT_PX / MOBILE_FOCUS_WORLD_FONT_PX;
+      // 1. Zoom then pan so blob's upper-left (blob.x, blob.y) is at the app's upper-left (with padding)
+      const newPanX = MOBILE_FOCUS_HORIZ_PADDING - blob.x * newScale;
+      const newPanY = MOBILE_FOCUS_HEADER_PX - blob.y * newScale;
+      panRef.current = { x: newPanX, y: newPanY };
+      scaleRef.current = newScale;
+      setPan({ x: newPanX, y: newPanY });
+      setScale(newScale);
+      setIsShowingAll(false);
+      persistCamera({ panX: newPanX, panY: newPanY, scale: newScale }, { immediate: true });
+      // 2. Then resize blob: width to screen, height to fit viewport
+      const screenWidthForBlob = viewportWidth - 2 * MOBILE_FOCUS_HORIZ_PADDING;
+      const newBlobWidthWorld = Math.max(MIN_BLOB_W, screenWidthForBlob / newScale);
+      const effectiveBackerSize =
+        preferences.platformMode === "mobile" ? 0 : preferences.blobbyBackerSizePx;
+      // In mobile, Blobby sits in the top bar (no extra space); blob gets space below header.
+      const availableHeightScreen =
+        preferences.platformMode === "mobile"
+          ? viewportHeight -
+            MOBILE_FOCUS_HEADER_PX -
+            2 * MOBILE_FOCUS_VERT_PADDING_PX
+          : viewportHeight -
+            MOBILE_FOCUS_HEADER_PX -
+            2 * MOBILE_FOCUS_VERT_PADDING_PX -
+            (MOBILE_FOCUS_BOTTOM_OFFSET_PX + effectiveBackerSize);
+      const newBlobHeight = Math.max(MIN_BLOB_H, availableHeightScreen / newScale);
+      const bounds = getBlobBounds(blob);
+      preMobileFocusBlobRef.current = { blobId, width: bounds.width, height: bounds.height };
+      dispatch({
+        type: "SET_BLOB_SIZE",
+        payload: { id: blobId, width: newBlobWidthWorld, height: newBlobHeight },
+      });
+    },
+    [blobs, dispatch, persistCamera, preferences.platformMode, preferences.blobbyBackerSizePx]
+  );
+
+  const prevPlatformModeRef = useRef(preferences.platformMode);
+  useEffect(() => {
+    const prev = prevPlatformModeRef.current;
+    prevPlatformModeRef.current = preferences.platformMode;
+    if (prev !== "mobile" || preferences.platformMode !== "desktop" || !preMobileFocusBlobRef.current) return;
+    const { blobId, width: storedWidth, height: storedHeight } = preMobileFocusBlobRef.current;
+    preMobileFocusBlobRef.current = null;
+    dispatch({ type: "SET_BLOB_SIZE", payload: { id: blobId, width: storedWidth, height: storedHeight } });
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const runAfterPaint = () => {
+      requestAnimationFrame(() => {
+        const card = canvas.querySelector<HTMLElement>(`[data-blob-id="${blobId}"]`);
+        const contentEl = card?.querySelector<HTMLElement>("[data-testid=\"blob-content\"]");
+        if (!contentEl || contentEl.scrollHeight === 0) return;
+        const s = scaleRef.current;
+        const CARD_PADDING_VERTICAL_PX = 20;
+        const contentHeightWorld = (CARD_PADDING_VERTICAL_PX + contentEl.scrollHeight) / s;
+        dispatch({
+          type: "SET_BLOB_SIZE",
+          payload: { id: blobId, width: storedWidth, height: Math.max(MIN_BLOB_H, contentHeightWorld) },
+        });
+      });
+    };
+    runAfterPaint();
+  }, [preferences.platformMode, dispatch]);
+
   useEffect(() => {
     const handler = () => zoomToFit();
     window.addEventListener("blob:zoom-to-fit", handler);
@@ -1098,8 +1215,6 @@ export default function Home() {
   }, [undo, redo, canUndo, canRedo]);
 
   /** When switching to Raw, capture current blob sizes from DOM so they don’t change. */
-  const MIN_BLOB_W = 120;
-  const MIN_BLOB_H = 80;
   const captureBlobSizesBeforeViewChange = useCallback(
     (newView: "raw" | "preview") => {
       if (newView !== "raw") return;
@@ -1148,6 +1263,21 @@ export default function Home() {
           if (ids.length) dispatch({ type: "DELETE_BLOBS", payload: ids });
         }}
       />
+      {preferences.platformMode === "mobile" && (
+        <div
+          aria-hidden
+          style={{
+            position: "fixed",
+            top: 0,
+            left: 0,
+            right: 0,
+            height: MOBILE_TOP_BAR_HEIGHT_PX,
+            background: "#fff",
+            pointerEvents: "none",
+            zIndex: 1,
+          }}
+        />
+      )}
       <div
         ref={canvasRef}
         className={styles.canvas}
@@ -1206,7 +1336,18 @@ export default function Home() {
             pan={pan}
             panRef={panRef}
             scaleRef={scaleRef}
-            blobbyBackerSizePx={preferences.blobbyBackerSizePx}
+            blobbyBackerSizePx={preferences.platformMode === "mobile" ? Math.round(preferences.blobbyBackerSizePx / 2) : preferences.blobbyBackerSizePx}
+            platformMode={preferences.platformMode}
+            viewportWorld={
+              scale > 0 && canvasSize.width > 0 && canvasSize.height > 0
+                ? {
+                    left: -pan.x / scale,
+                    top: -pan.y / scale,
+                    width: canvasSize.width / scale,
+                    height: canvasSize.height / scale,
+                  }
+                : undefined
+            }
             isSelected={selectedIds.includes(blob.id)}
             autoFocus={blob.id === focusBlobId}
             onAutoFocusDone={() => {
@@ -1235,6 +1376,7 @@ export default function Home() {
             onMoveSelected={handleMoveSelected}
             onFocus={() => {
               focusedBlobIdRef.current = blob.id;
+              if (preferences.platformMode === "mobile") handleMobileFocusBlob(blob.id);
               window.dispatchEvent(new CustomEvent("blob:user-action"));
             }}
             onBlur={() => {
@@ -1303,6 +1445,10 @@ export default function Home() {
                   }
                 });
               }}
+              hasEmptyLinesInSelection={selectedIds.some((id) => {
+                const blob = blobs.find((b) => b.id === id);
+                return blob ? hasEmptyLines(markdownToLines(blob.content ?? "")) : false;
+              })}
               allSelectedLocked={
                 selectedIds.length > 0 &&
                 selectedIds.every(
@@ -1345,33 +1491,89 @@ export default function Home() {
         />
       )}
 
-      {/* Blobby backer: shared hit area for summarize + jump */}
-      <BlobbyBacker
-        sizePx={preferences.blobbyBackerSizePx}
-        onTap={() => {
-          handleBlobbyTap();
-          if (typeof window !== "undefined") window.dispatchEvent(new CustomEvent("blobby:tap"));
-        }}
-        onPointerEnter={handleBlobbyBackerPointerEnter}
-        onPointerLeave={handleBlobbyBackerPointerLeave}
-      />
-      <Blobby summaryLoading={llmLoading} />
+      {/* Desktop: container with backer + Blobby. Mobile: white top bar (separate div); Blobby only, no backer, sized to bar height. */}
+      {(() => {
+        const isMobile = preferences.platformMode === "mobile";
+        const containerSizePx = isMobile
+          ? MOBILE_TOP_BAR_HEIGHT_PX
+          : preferences.blobbyBackerSizePx;
+        const blobbySizePx = isMobile
+          ? MOBILE_TOP_BAR_HEIGHT_PX
+          : Math.round((containerSizePx * preferences.blobbySizePercent) / 100);
+        return (
+          <div
+            style={{
+              position: "fixed",
+              left: "50%",
+              ...(isMobile
+                ? { top: 0, transform: "translateX(-50%)" }
+                : { bottom: BLOBBY_CONTAINER_BOTTOM_PX, transform: "translate(-50%, 50%)" }),
+              width: containerSizePx,
+              height: containerSizePx,
+              zIndex: 2,
+            }}
+          >
+            {isMobile ? (
+              <div
+                style={{
+                  position: "absolute",
+                  inset: 0,
+                  pointerEvents: "auto",
+                  cursor: "pointer",
+                }}
+                onClick={() => {
+                  handleBlobbyTap();
+                  if (typeof window !== "undefined") window.dispatchEvent(new CustomEvent("blobby:tap"));
+                }}
+                onPointerEnter={handleBlobbyBackerPointerEnter}
+                onPointerLeave={handleBlobbyBackerPointerLeave}
+                aria-label="Blobby"
+              />
+            ) : (
+              <BlobbyBacker
+                onTap={() => {
+                  handleBlobbyTap();
+                  if (typeof window !== "undefined") window.dispatchEvent(new CustomEvent("blobby:tap"));
+                }}
+                onPointerEnter={handleBlobbyBackerPointerEnter}
+                onPointerLeave={handleBlobbyBackerPointerLeave}
+              />
+            )}
+            <Blobby summaryLoading={llmLoading} sizePx={blobbySizePx} />
+          </div>
+        );
+      })()}
       {(preferences.blobbyCommenting === "commenting" ||
         llmSummary != null ||
         llmLoading ||
-        (showRecalledOutput && (lastBlobbyOutput != null || getLastBlobbyLogEntry(blobbyLog) != null))) && (
-        <BlobbyWordBox
-          summaryFromTap={llmLoading ? null : (llmSummary ?? (showRecalledOutput ? (lastBlobbyOutput ?? getLastBlobbyLogEntry(blobbyLog)) : null))}
-          summaryLoading={llmLoading}
-          onMouseOverChange={setIsBlobbyHovered}
-          onLeaveAfterAction={() => {
-            setShowRecalledOutput(false);
-            setLlmSummary(null);
-          }}
-          showOptionsWithoutHover={showRecalledOutput}
-          onMenuOpenChange={setIsBlobbyMenuOpen}
-        />
-      )}
+        (showRecalledOutput && (lastBlobbyOutput != null || getLastBlobbyLogEntry(blobbyLog) != null))) && (() => {
+        const blobbyContainerSizePx =
+          preferences.platformMode === "mobile"
+            ? MOBILE_TOP_BAR_HEIGHT_PX
+            : preferences.blobbyBackerSizePx;
+        const blobbyAtTop = preferences.platformMode === "mobile";
+        const blobbyContainerTopPx = blobbyAtTop
+          ? 0
+          : canvasSize.height - BLOBBY_CONTAINER_BOTTOM_PX - 1.5 * blobbyContainerSizePx;
+        return (
+          <BlobbyWordBox
+            summaryFromTap={llmLoading ? null : (llmSummary ?? (showRecalledOutput ? (lastBlobbyOutput ?? getLastBlobbyLogEntry(blobbyLog)) : null))}
+            summaryLoading={llmLoading}
+            onMouseOverChange={setIsBlobbyHovered}
+            onLeaveAfterAction={() => {
+              setShowRecalledOutput(false);
+              setLlmSummary(null);
+            }}
+            showOptionsWithoutHover={showRecalledOutput}
+            onMenuOpenChange={setIsBlobbyMenuOpen}
+            blobbyContainerTopPx={blobbyContainerTopPx}
+            blobbyContainerSizePx={blobbyContainerSizePx}
+            blobbyAtTop={blobbyAtTop}
+            viewportWidthPx={canvasSize.width}
+            viewportHeightPx={canvasSize.height}
+          />
+        );
+      })()}
 
       {pendingDeleteIds && (
         <ConfirmDialog

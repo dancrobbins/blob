@@ -2,8 +2,8 @@
 
 import React, { useEffect, useRef, useCallback, useState } from "react";
 
-const SIZE = 100; // blobby video size
-const BACK_CIRCLE_SIZE = Math.round(SIZE * 1.1); // 10% bigger, centered under blobby
+const DEFAULT_SIZE = 100; // blobby video size (desktop)
+const backCircleFromSize = (size: number) => Math.round(size * 1.1); // 10% bigger, centered under blobby
 
 type Mode = "idle" | "jump" | "look";
 
@@ -45,9 +45,16 @@ function pickNextFromRemaining(remaining: string[], allFiles: string[]): { next:
   return { next, remaining: list };
 }
 
-type BlobbyProps = { summaryLoading?: boolean };
+type BlobbyProps = {
+  summaryLoading?: boolean;
+  /** Size (px) of this block; comes from the shared container (slider × platform). Back circle = sizePx, character = sizePx/1.1. */
+  sizePx?: number;
+};
 
-export function Blobby({ summaryLoading = false }: BlobbyProps) {
+export function Blobby({ summaryLoading = false, sizePx = DEFAULT_SIZE }: BlobbyProps) {
+  const containerSize = sizePx;
+  const size = Math.round(containerSize / 1.1);
+  const backCircleSize = containerSize;
   const videoARef = useRef<HTMLVideoElement>(null);
   const videoBRef = useRef<HTMLVideoElement>(null);
 
@@ -196,8 +203,8 @@ export function Blobby({ summaryLoading = false }: BlobbyProps) {
 
   const videoStyle = {
     position: "absolute" as const,
-    width: SIZE,
-    height: SIZE,
+    width: size,
+    height: size,
     objectFit: "contain" as const,
   };
 
@@ -208,12 +215,12 @@ export function Blobby({ summaryLoading = false }: BlobbyProps) {
       <div
         className="blobby-container"
         style={{
-          position: "fixed",
-          bottom: 24,
+          position: "absolute",
           left: "50%",
-          transform: "translateX(-50%)",
-          width: BACK_CIRCLE_SIZE,
-          height: BACK_CIRCLE_SIZE,
+          top: "50%",
+          transform: "translate(-50%, -50%)",
+          width: backCircleSize,
+          height: backCircleSize,
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
@@ -225,8 +232,8 @@ export function Blobby({ summaryLoading = false }: BlobbyProps) {
         <div
           style={{
             position: "absolute",
-            width: BACK_CIRCLE_SIZE,
-            height: BACK_CIRCLE_SIZE,
+            width: backCircleSize,
+            height: backCircleSize,
             borderRadius: "50%",
             backgroundColor: "var(--blobby-back-circle-bg, rgba(0, 0, 0, 0.06))",
           }}
@@ -242,25 +249,25 @@ export function Blobby({ summaryLoading = false }: BlobbyProps) {
       className="blobby-container"
       data-blobby-area
       style={{
-        position: "fixed",
-        bottom: 24,
+        position: "absolute",
         left: "50%",
-        transform: "translateX(-50%)",
-        width: BACK_CIRCLE_SIZE,
-        height: BACK_CIRCLE_SIZE,
+        top: "50%",
+        transform: "translate(-50%, -50%)",
+        width: backCircleSize,
+        height: backCircleSize,
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
         pointerEvents: "none",
         overflow: "visible",
-        zIndex: 3,
+        zIndex: 1,
       }}
     >
       <div
         style={{
           position: "absolute",
-          width: BACK_CIRCLE_SIZE,
-          height: BACK_CIRCLE_SIZE,
+          width: backCircleSize,
+          height: backCircleSize,
           borderRadius: "50%",
           backgroundColor: "var(--blobby-back-circle-bg, rgba(0, 0, 0, 0.06))",
           zIndex: 0,

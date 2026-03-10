@@ -3,6 +3,7 @@
 import React, { useState, useRef, useEffect } from "react";
 import { useBlobsContext } from "@/contexts/BlobsContext";
 import { APP_VERSION, BUILD_TIME, BUILD_UPDATES } from "@/lib/constants";
+import { getSyncLog } from "@/lib/sync-log";
 import {
   BLOB_CLOSE_MENUS_EVENT,
   dispatchCloseMenus,
@@ -76,6 +77,7 @@ export function Header({
   const [signInError, setSignInError] = useState<string | null>(null);
   const [buildTooltipOpen, setBuildTooltipOpen] = useState(false);
   const [buildInfo, setBuildInfo] = useState<BuildInfo | null>(null);
+  const [copyDebugLogStatus, setCopyDebugLogStatus] = useState<"idle" | "copied" | "error">("idle");
   const menuRef = useRef<HTMLDivElement>(null);
   const accountRef = useRef<HTMLDivElement>(null);
   const buildTooltipRef = useRef<HTMLDivElement>(null);
@@ -409,23 +411,60 @@ export function Header({
               </div>
             </div>
             <div className={styles.menuSection}>
-              <span className={styles.menuLabel}>Blobby backer</span>
-              <div className={styles.backerSliderWrap}>
-                <input
-                  type="range"
-                  min={100}
-                  max={500}
-                  value={preferences.blobbyBackerSizePx}
-                  onChange={(e) => {
-                    const v = Math.min(500, Math.max(100, Number(e.target.value)));
-                    setPreferences((p) => ({ ...p, blobbyBackerSizePx: v }));
+              <span className={styles.menuLabel}>Platform</span>
+              <div className={styles.themeTabs} role="tablist" aria-label="Platform">
+                <div
+                  className={styles.themeTabSelector}
+                  style={{
+                    transform:
+                      preferences.platformMode === "desktop"
+                        ? "translateX(100%)"
+                        : "translateX(0)",
                   }}
-                  className={styles.backerSlider}
-                  aria-label="Blobby backer size"
+                  aria-hidden
                 />
-                <span className={styles.backerSliderValue} aria-hidden>{preferences.blobbyBackerSizePx}</span>
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={preferences.platformMode === "mobile"}
+                  className={styles.themeTab}
+                  data-testid="platform-mobile"
+                  onClick={() => setPreferences((p) => ({ ...p, platformMode: "mobile" }))}
+                >
+                  Mobile
+                </button>
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={preferences.platformMode === "desktop"}
+                  className={styles.themeTab}
+                  data-testid="platform-desktop"
+                  onClick={() => setPreferences((p) => ({ ...p, platformMode: "desktop" }))}
+                >
+                  Desktop
+                </button>
               </div>
             </div>
+            {preferences.platformMode !== "mobile" && (
+              <div className={styles.menuSection}>
+                <span className={styles.menuLabel}>Blobby size</span>
+                <div className={styles.backerSliderWrap}>
+                  <input
+                    type="range"
+                    min={25}
+                    max={100}
+                    value={preferences.blobbySizePercent}
+                    onChange={(e) => {
+                      const v = Math.min(100, Math.max(25, Number(e.target.value)));
+                      setPreferences((p) => ({ ...p, blobbySizePercent: v }));
+                    }}
+                    className={styles.backerSlider}
+                    aria-label="Blobby size relative to backer (percent)"
+                  />
+                  <span className={styles.backerSliderValue} aria-hidden>{preferences.blobbySizePercent}%</span>
+                </div>
+              </div>
+            )}
             <div className={styles.menuSection}>
               <span className={styles.menuLabel}>Blobby</span>
               <div className={styles.themeTabs} role="tablist" aria-label="Blobby commenting">
@@ -532,6 +571,8 @@ export function Header({
                   Loose
                 </button>
               </div>
+            </div>
+            <div className={styles.menuSection}>
               <div className={styles.backerSliderWrap}>
                 <span className={styles.menuLabel}>Merge margin</span>
                 <input
@@ -616,6 +657,28 @@ export function Header({
                   </div>
                 )}
               </div>
+            </div>
+            <div className={styles.menuSection}>
+              <button
+                type="button"
+                className={styles.menuAction}
+                data-testid="copy-sync-debug-log"
+                onClick={async () => {
+                  try {
+                    const log = getSyncLog();
+                    const text = JSON.stringify(log, null, 2);
+                    await navigator.clipboard.writeText(text);
+                    setCopyDebugLogStatus("copied");
+                    setTimeout(() => setCopyDebugLogStatus("idle"), 2000);
+                  } catch {
+                    setCopyDebugLogStatus("error");
+                    setTimeout(() => setCopyDebugLogStatus("idle"), 2000);
+                  }
+                }}
+                aria-label={copyDebugLogStatus === "copied" ? "Copied" : copyDebugLogStatus === "error" ? "Copy failed" : "Copy sync debug log to clipboard"}
+              >
+                {copyDebugLogStatus === "copied" ? "Copied" : copyDebugLogStatus === "error" ? "Copy failed" : "Copy sync debug log"}
+              </button>
             </div>
           </div>
         )}

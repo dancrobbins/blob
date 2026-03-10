@@ -1,5 +1,94 @@
 # Changelog
 
+## 2026-03-10 (Remove empty lines shortens blob)
+- **Remove empty lines** (blob "..." menu and multi-select menu) now shrinks the blob card height when the text gets shorter, so the card no longer leaves empty space below. Works in both Preview and Raw view.
+
+## 2026-03-10 (Desktop: Blobby chat from upper-right)
+- In **desktop** mode, the Blobby messages/chat bubble is now positioned from Blobby’s **upper-right corner**: the top of the chat aligns with the top of the Blobby container, and the chat extends to the right (and down as needed).
+
+## 2026-03-10 (Desktop: vertical scrollbar when blob height is reduced)
+- On **desktop**, when the user resizes a blob so its height is fixed and not all content fits (e.g. many bullet lines), the blob card now shows a **vertical scrollbar** so the content can be scrolled. The same behavior applies whenever the card has a fixed height (user-resized or mobile focus).
+
+## 2026-03-10 (Mobile: Blobby chat at bottom-right of Blobby)
+- In **Mobile** mode, the Blobby messages/chat bubble is positioned at the **bottom-right** of Blobby (below the top bar and to the right of the character). Left is anchored to Blobby’s right edge + gap; clamping keeps the box on screen.
+
+## 2026-03-10 (Fix blob text disappearing)
+- **Root cause:** When the cloud fetch failed at login (network/RLS) and local storage was empty, the app pushed empty state to the cloud and overwrote real data. A later tab or refresh would then see 0 blobs.
+- **Fix:** When fetch fails, we only push local to the cloud if local has blobs; we never overwrite the cloud with empty when we didn’t successfully read it. A `cloudKnownRef` ensures we don’t persist empty state until we’ve either read cloud or pushed local data. Sync log: `persist:skipped-empty-unknown-cloud` and `login:no-cloud-push-local` now includes `willPush`.
+
+## 2026-03-09 (Mobile: hide Blobby size slider)
+- In **Mobile** platform mode, the **Blobby size** percentage slider is hidden in the main menu (Blobby is fixed to the top bar height).
+
+## 2026-03-09 (Mobile: white top bar, Blobby in bar without backer)
+- In **Mobile** mode: a **white horizontal bar** spans the top of the app (same height as the main menu button / avatar row). The bar does **not** capture pointer events (clicks pass through). The **Blobby backer is hidden** and **Blobby** (the character) is **resized to fit the bar height** and centered in it; an invisible tap target keeps Blobby tappable.
+
+## 2026-03-09 (Blobby word box follows Blobby, on-screen)
+- The Blobby messages/chat bubble (and "..." menu) now **follow Blobby** wherever it is placed (top in mobile, bottom on desktop). The box is positioned above Blobby on desktop and below Blobby on mobile, and its position is **clamped** so it stays fully on screen (no overflow off top, bottom, or sides).
+
+## 2026-03-09 (Sync debug log from menu)
+- Main menu now has **Copy sync debug log**: copies the in-memory sync event log to the clipboard so you can paste it into a file or support ticket without opening DevTools or a terminal.
+
+## 2026-03-09 (Blobby size range and default)
+- **Blobby size** slider range is now 25%–100% (was 50%–100%); default is 50% (was 75%).
+
+## 2026-03-09 (Blobby size slider value width)
+- Main menu **Blobby size** slider value field now has a fixed minimum width (4ch) so it fits three digits (e.g. 100%) without the layout shifting when the value changes from 99 to 100.
+
+## 2026-03-09 (Sync debug logging)
+- Sync debug log: in-memory ring buffer exposed as `window.__blobSyncLog`; logs login merge, poll (including remote-ahead drop), persist, delete, and content counts for diagnosing missing blob text. In DevTools run `copy(JSON.stringify(__blobSyncLog, null, 2))` to export.
+
+## 2026-03-09 (Mobile: Blobby at top, blob fills height)
+- In **Mobile** mode, the Blobby unit (character + backer) is now positioned at the **top** of the app (below the header) instead of the bottom. When you tap into a blob (focus-on-blob), the blob is resized vertically to **fill the available height** (the space below the header and below Blobby).
+
+## 2026-03-09 (Mobile: no rectangle drag select)
+- In **Mobile** platform mode, one-finger drag on the canvas no longer starts rectangle selection; pan and rectangle select are both disabled.
+
+## 2026-03-09 (Blobby size slider: percentage of backer)
+- The main menu **Blobby backer** slider is now **Blobby size**: a percentage of the blobby backer (50%–100%, default 75%). The backer (container) size is unchanged; only the character size relative to it is adjusted.
+
+## 2026-03-09 (Desktop restore: blob width + height fit content)
+- When switching from **Mobile** back to **Desktop**, the blob that had been focused in mobile is restored: its width is set back to the pre-mobile desktop width, then its height is set so no vertical scrollbar is needed (height fits content).
+
+## 2026-03-09 (Blobby + backer in one container)
+- Blobby and the blobby backer are now inside a single container. Only that container is resized: by **Platform** (mobile = half size) and by the **Blobby backer** slider in the main menu. No separate sizing of Blobby vs backer, so they stay centered with each other.
+
+## 2026-03-09 (Mobile mode: no one-finger pan)
+- In **Mobile** platform mode, panning the canvas with one finger is disabled. A one-finger drag on empty canvas starts rectangle selection instead of pan. Two-finger pinch zoom is unchanged.
+
+## 2026-03-09 (Mobile mode: wheel scrolls blob content)
+- When **Platform** is set to **Mobile** (even on a desktop with a mouse), mouse wheel over a blob with scrollable content (mobile-fill) now scrolls that blob’s content instead of zooming the canvas.
+
+## 2026-03-09 (Mobile focus: pan top-left then resize)
+- In **Mobile** mode, when you tap into a blob the sequence is now: (1) zoom the view to default font size, (2) pan so the blob’s **upper-left corner** is at the **upper-left corner** of the app (with padding), (3) then resize the blob (width to screen, height to viewport). Previously the view was centered on the blob before resize.
+
+## 2026-03-09 (Blobby centered in backer)
+- Blobby (the character and its back circle) is now always vertically and horizontally centered in the blobby backer. Position is computed from the backer size so the two stay aligned at any backer or platform size.
+
+## 2026-03-09 (Mobile: Blobby and backer half size)
+- In **Mobile** platform mode, Blobby (the character) and the blobby backer circle are rendered at half their desktop size (50px and half the backer slider value respectively). Blob control overlay still avoids the smaller blobby region.
+
+## 2026-03-09 (Platform toggle and mobile focus-on-blob)
+- Main menu: **Platform** toggle with **Mobile** and **Desktop**. Default is sniffed from the device (coarse pointer = mobile); user can override and choice is persisted.
+- In **Mobile** mode, when the user taps into a blob to edit it, the view zooms so the blob text is at default readable size (16px) and the blob width is set to the screen width (with padding), centering the blob for single-blob focus.
+
+## 2026-03-09 (iOS Safari: menu and avatar stay visible)
+- On iOS Safari, the app no longer zooms or moves as a whole: viewport scale is locked (canvas keeps its own pinch-zoom), and overscroll/bounce is prevented so the main menu and avatar bubble stay on screen. Header uses safe-area insets for notched devices.
+
+## 2026-03-09 (Blob click selects; Zoom to selection)
+- Clicking a blob (or its controls) now selects it, so the main menu \"Zoom to selection\" is enabled. Tapping \"Zoom to selection\" pans and zooms the view to fit the selection. Ctrl/Cmd+click on a blob toggles it in the selection (multi-select).
+
+## 2026-03-09 (Phantom blobs fix)
+- Phantom blobs fixed: blobs with positions far off-screen (e.g. canvas at -430, -305) no longer show hover buttons (⋮⋮ and …) in the viewport. The controls overlay is only portaled and clamped when the blob’s card is at least partially in view; otherwise the card and controls stay in canvas space so they are both off-screen.
+
+## 2026-03-09 (Merge margin slider on its own row)
+- Main menu: the Merge margin slider is now on its own row, separate from the Merging (Strict/Loose) row.
+
+## 2026-03-09 (Remove empty lines disabled when none)
+- \"Remove empty lines\" in the blob \"...\" menu and in the multi-select menu is now disabled when the blob (or all selected blobs) have no empty lines (blank or bullet-only lines).
+
+## 2026-03-09 (Copy debug info in blob menu for danrobbins@gmail.com)
+- Renamed \"CopyID\" to \"Copy debug info\". It now copies a full debug block: blob id (GUID), canvas (x,y), size, hidden, locked, selected, partOfMultiSelection, createdAt, updatedAt, contentLength, and contentPreview (first 80 chars).
+
 ## 2026-03-09 (Blobby look animations while summary loading)
 - While the LLM summary is loading after tapping Blobby, Blobby randomly cycles through the \"look\" animations (from `assets/animations/look/` or `public/assets/animations/look/`). When the summary returns, Blobby switches back to idle animations.
 
@@ -42,6 +131,9 @@
 
 ## 2026-03-09 (drag blob edge auto-pan)
 - When dragging a blob, if the cursor reaches the viewport edge (top, bottom, left, or right), the canvas now auto-pans in that direction so the dragged blob stays in view. Panning starts as soon as the cursor touches the edge and continues at a fixed speed while at the edge.
+
+## 2026-03-09 (hardened user number for multiple sessions)
+- User numbers ("Name 1", "Name 2") are now assigned at first arrival and stored in a stable map. Numbers no longer change when presence sync events fire or when sessions reconnect. React state updates when the roster or any label changes (not just session IDs), so the displayed number is always correct. Teardown clears the arrival map so the next channel reconnect starts fresh.
 
 ## 2026-03-09 (user number from full presence state)
 - The "Name 2" suffix for multiple tabs of the same account was never shown because we built the presence list from *others only*, so each tab only ever saw one other presence and the per-user count was always 1. We now build displayLabels from the *full* presence state (including our own session), assign "Name 1" / "Name 2" by userId, then filter to others and attach the precomputed label. So the other tab's cursor shows "Daniel 2" (or "Daniel 1") correctly.

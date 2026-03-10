@@ -1,8 +1,8 @@
 {
-  "buildNumber": 272,
-  "buildTime": "2026-03-10T00:51:43.147Z",
+  "buildNumber": 290,
+  "buildTime": "2026-03-10T05:38:32.776Z",
   "version": "1.0.0",
   "updates": [
-    "While waiting for the Blobby summary, Blobby cycles through the \"look\" animations; when the summary returns, Blobby returns to idle animations."
+    "Desktop: when a blob has fixed height and content overflows, show a vertical scrollbar."
   ]
 }

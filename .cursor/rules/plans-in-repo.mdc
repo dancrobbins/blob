@@ -11,6 +11,11 @@ alwaysApply: true
 
 2. **Commit and push:** Plans are normal repo content. When you commit (including **pushme** / **pushall**), include changes under `plans/` like any other file. Do not exclude the `plans/` directory from commits or pushes.
 
-3. **Creating or saving a plan:** When writing or saving a plan, put it in `plans/` with a clear filename (e.g. `plans/auth-redesign.md`). If the user asks to "save this plan" or "add this to the repo", write the plan into a file under `plans/` and ensure it will be committed on the next push.
+3. **Update plans.md:** Every new plan file must also get a row added to **`plans.md`** at the project root.
+   - Format: `| [Friendly name](plans/file-name.md) | Short description | Not started | YYYY-MM-DD |`
+   - Status options: **Complete**, **Not started**, **Unknown**
+   - Date: today's date (when creating) or last date actioned
 
-Summary: **Plans go in `plans/`. They are committed and pushed with the rest of the repo.**
+4. **Creating or saving a plan:** When writing or saving a plan, put it in `plans/` with a clear filename (e.g. `plans/auth-redesign.md`) and add a row to `plans.md`. If the user asks to "save this plan" or "add this to the repo", write the plan into a file under `plans/` and ensure it will be committed on the next push.
+
+Summary: **Plans go in `plans/`. Each new plan gets a row in `plans.md`. They are committed and pushed with the rest of the repo.**

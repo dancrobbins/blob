@@ -35,11 +35,16 @@ export type BlobMarkdownView = "raw" | "preview";
 /** Merge detection: strict = cursor must be inside other blob's merge region; loose = blob rects overlap/touch. */
 export type MergingMode = "strict" | "loose";
 
+/** UI mode: "mobile" = focus-one-blob on tap; "desktop" = normal. Default is sniffed from device, user can override. */
+export type PlatformMode = "mobile" | "desktop";
+
 export interface Preferences {
   theme: "light" | "dark";
   blobbyColor: string;
-  /** Blobby backer display size in px (100–500). */
+  /** Blobby backer (container) display size in px (100–500). No longer shown in UI; container size. */
   blobbyBackerSizePx: number;
+  /** Blobby character size as % of backer (25–100). Default 50. */
+  blobbySizePercent: number;
   /** Whether Blobby talks proactively: "silent" | "commenting". */
   blobbyCommenting: "silent" | "commenting";
   /** Blob text: show raw markdown or preview (bullets/todos). */
@@ -48,16 +53,20 @@ export interface Preferences {
   mergingMode: MergingMode;
   /** Merge region margin in world px (10–200). Padding around each blob for merge detection/cues. */
   mergeMarginPx: number;
+  /** "mobile" = focus-one-blob on tap; "desktop" = normal. Sniffed by default, user can override. */
+  platformMode: PlatformMode;
 }
 
 export const DEFAULT_PREFERENCES: Preferences = {
   theme: "light",
   blobbyColor: "pink",
   blobbyBackerSizePx: 200,
+  blobbySizePercent: 50,
   blobbyCommenting: "silent",
   blobMarkdownView: "preview",
   mergingMode: "strict",
   mergeMarginPx: 50,
+  platformMode: "desktop",
 };
 
 export const BLOBBY_GRID_ROWS = 3;

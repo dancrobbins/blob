@@ -3,15 +3,12 @@
 import React, { useEffect, useRef, useCallback, useState } from "react";
 import styles from "./BlobbyWordBox.module.css";
 
-/** Blobby is bottom: 24, centered, back circle ~110px. Box sits upper-right of it. */
-const BLOBBY_BOTTOM_PX = 24;
-const BLOBBY_SIZE_PX = 110;
-const BOX_OFFSET_ABOVE_PX = 8;
-const BOX_OFFSET_RIGHT_OF_CENTER_PX = 8;
-const BOX_BOTTOM_PX = BLOBBY_BOTTOM_PX + BLOBBY_SIZE_PX + BOX_OFFSET_ABOVE_PX;
+const BOX_OFFSET_PX = 8;
 /** Hit area for the "..." button so finger/mouse can move toward it without leaving hover */
 const ELLIPSIS_HIT_SIZE_PX = 44;
 const ELLIPSIS_GAP_PX = 8;
+const BOX_ESTIMATE_WIDTH_PX = 220;
+const BOX_ESTIMATE_MAX_HEIGHT_PX = 260;
 const REVEAL_DURATION_MS = 5000;
 const HOLD_DURATION_MS = 2000;
 const FADE_OUT_DURATION_MS = 1000;
@@ -40,6 +37,15 @@ type BlobbyWordBoxProps = {
   showOptionsWithoutHover?: boolean;
   /** Called when the "..." popup menu opens or closes so the parent can keep the chat visible while the menu is open. */
   onMenuOpenChange?: (open: boolean) => void;
+  /** Blobby container top (px from viewport top). Used to position box with Blobby and clamp on screen. */
+  blobbyContainerTopPx?: number;
+  /** Blobby container size (px). */
+  blobbyContainerSizePx?: number;
+  /** True when Blobby is at top of app (mobile). Box is placed below Blobby; otherwise above. */
+  blobbyAtTop?: boolean;
+  /** Viewport size for clamping so box stays on screen. */
+  viewportWidthPx?: number;
+  viewportHeightPx?: number;
 };
 
 export function BlobbyWordBox({
@@ -49,6 +55,11 @@ export function BlobbyWordBox({
   onLeaveAfterAction,
   showOptionsWithoutHover = false,
   onMenuOpenChange,
+  blobbyContainerTopPx,
+  blobbyContainerSizePx = 110,
+  blobbyAtTop = false,
+  viewportWidthPx,
+  viewportHeightPx,
 }: BlobbyWordBoxProps) {
   const [visible, setVisible] = useState(false);
   const [displayedText, setDisplayedText] = useState("");
@@ -197,23 +208,48 @@ export function BlobbyWordBox({
   const showEllipsisButton = hasSummary && (isHovered || showOptionsWithoutHover);
 
   const boxLeftOffset = ELLIPSIS_HIT_SIZE_PX + ELLIPSIS_GAP_PX;
+  const vw = viewportWidthPx ?? (typeof window !== "undefined" ? window.innerWidth : 0);
+  const vh = viewportHeightPx ?? (typeof window !== "undefined" ? window.innerHeight : 0);
+  const containerTop = blobbyContainerTopPx ?? vh - 74 - 1.5 * blobbyContainerSizePx;
+  const containerSize = blobbyContainerSizePx;
+  const centerX = vw / 2;
+  // Desktop: chat from Blobby's upper-right (top of box = top of Blobby, left = right of Blobby + gap). Mobile: box at bottom-right of Blobby.
+  const naturalLeft = centerX + containerSize / 2 + BOX_OFFSET_PX - (hasSummary ? boxLeftOffset : 0);
+  const boxMaxW = Math.min(BOX_ESTIMATE_WIDTH_PX, vw / 2 - 80);
+  const rightBound = vw - boxMaxW - boxLeftOffset - BOX_OFFSET_PX;
+  const leftClamped = blobbyAtTop
+    ? Math.max(0, Math.min(naturalLeft, rightBound))
+    : Math.max(BOX_OFFSET_PX, Math.min(naturalLeft, rightBound));
+  const baseStyle: React.CSSProperties = {
+    position: "fixed",
+    left: leftClamped,
+    display: "flex",
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: ELLIPSIS_GAP_PX,
+    pointerEvents: "auto",
+    zIndex: 3,
+    overflow: "visible",
+  };
+  const positionStyle =
+    blobbyAtTop != null && blobbyAtTop
+      ? {
+          ...baseStyle,
+          top: Math.min(
+            containerTop + containerSize + BOX_OFFSET_PX,
+            Math.max(0, vh - BOX_ESTIMATE_MAX_HEIGHT_PX)
+          ),
+        }
+      : {
+          ...baseStyle,
+          top: Math.max(0, containerTop),
+        };
 
   return (
     <div
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
-      style={{
-        position: "fixed",
-        left: `calc(50% + ${BLOBBY_SIZE_PX / 2}px + ${BOX_OFFSET_RIGHT_OF_CENTER_PX}px - ${hasSummary ? boxLeftOffset : 0}px)`,
-        bottom: BOX_BOTTOM_PX,
-        display: "flex",
-        flexDirection: "row",
-        alignItems: "flex-start",
-        gap: ELLIPSIS_GAP_PX,
-        pointerEvents: "auto",
-        zIndex: 3,
-        overflow: "visible",
-      }}
+      style={positionStyle}
     >
       {/* "..." button: upper-left outside the chat bubble; hit area stays so finger/mouse can move toward it without leaving hover */}
       {hasSummary && (

@@ -10,7 +10,7 @@ import {
   parseBlobClipboardData,
   parsePastedContent,
 } from "@/lib/blob-lines";
-import { markdownToLines, linesToMarkdown, removeEmptyLines } from "@/lib/blob-markdown";
+import { markdownToLines, linesToMarkdown, removeEmptyLines, hasEmptyLines } from "@/lib/blob-markdown";
 import { useBlobsContext } from "@/contexts/BlobsContext";
 import { useControlsPortal } from "@/contexts/ControlsPortalContext";
 import { usePopupPortal } from "@/contexts/PopupPortalContext";
@@ -394,6 +394,8 @@ export function BlobCard({
   isSelected = false,
   isPartOfMultiSelection = false,
   onMoveSelected,
+  viewportWorld,
+  platformMode,
 }: {
   blob: Blob;
   blobMarkdownView?: BlobMarkdownView;
@@ -425,8 +427,12 @@ export function BlobCard({
   /** When true, dragging this blob's handle moves all selected blobs by the same delta. */
   isPartOfMultiSelection?: boolean;
   onMoveSelected?: (dx: number, dy: number) => void;
+  /** World-space viewport (visible canvas). When set, portaled controls are only used when the blob intersects this rect (avoids phantom controls for off-screen blobs). */
+  viewportWorld?: { left: number; top: number; width: number; height: number };
+  /** When "mobile", card with fixed height gets scrollable content (overflow-y: auto). */
+  platformMode?: "mobile" | "desktop";
 }) {
-  const { pushUndoSnapshot, incrementMenuOpen, decrementMenuOpen, dispatch } = useBlobsContext();
+  const { pushUndoSnapshot, incrementMenuOpen, decrementMenuOpen, dispatch, userEmail } = useBlobsContext();
   const cardRef = useRef<HTMLDivElement>(null);
   const cardInnerRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
@@ -824,6 +830,15 @@ export function BlobCard({
   const effectiveY = resizeOverlay?.y ?? blob.y;
   const effectiveW = resizeOverlay?.width ?? blob.width ?? undefined;
   const effectiveH = resizeOverlay?.height ?? blob.height ?? undefined;
+  const blobW = effectiveW ?? DEFAULT_BLOB_W;
+  const blobH = effectiveH ?? DEFAULT_BLOB_H;
+  const blobRect = { left: effectiveX, top: effectiveY, width: blobW, height: blobH };
+  const blobIsInView =
+    !viewportWorld ||
+    (blobRect.left < viewportWorld.left + viewportWorld.width &&
+      blobRect.left + blobRect.width > viewportWorld.left &&
+      blobRect.top < viewportWorld.top + viewportWorld.height &&
+      blobRect.top + blobRect.height > viewportWorld.top);
   const showEdgeLeftRight =
     (effectiveW ?? DEFAULT_BLOB_W) * scale >= EDGE_THRESHOLD_SCREEN_W;
   const showEdgeTopBottom =
@@ -1259,6 +1274,26 @@ export function BlobCard({
     }
   }, [blob.id, blob.content, blob.height, blob.width, blob.locked, blobMarkdownView, scale, dispatch]);
 
+  /** In Preview mode, shrink blob height when content shortens (e.g. after "Remove empty lines") so the card matches the text. */
+  useLayoutEffect(() => {
+    if (blobMarkdownView !== "preview" || blob.locked) return;
+    const el = contentRef.current;
+    const currentH = blob.height ?? DEFAULT_BLOB_H;
+    if (!el || currentH <= MIN_BLOB_H) return;
+    const contentHeightPx = CARD_PADDING_VERTICAL_PX + el.scrollHeight;
+    const contentHeightWorld = contentHeightPx / scale;
+    if (contentHeightWorld < currentH && contentHeightWorld >= MIN_BLOB_H) {
+      dispatch({
+        type: "SET_BLOB_SIZE",
+        payload: {
+          id: blob.id,
+          width: blob.width ?? DEFAULT_BLOB_W,
+          height: Math.max(MIN_BLOB_H, contentHeightWorld),
+        },
+      });
+    }
+  }, [blob.id, blob.content, blob.height, blob.width, blob.locked, blobMarkdownView, scale, dispatch]);
+
   useEffect(() => {
     if (blobMarkdownView === "raw" && autoFocus && rawTextareaRef.current) {
       rawTextareaRef.current.focus();
@@ -1283,6 +1318,26 @@ export function BlobCard({
     fn();
     setMenuOpen(false);
   };
+
+  const copyDebugInfo = useCallback(() => {
+    const content = blob.content ?? "";
+    const lines = [
+      "Blob debug info",
+      "---",
+      `id: ${blob.id}`,
+      `canvas: (${blob.x}, ${blob.y})`,
+      `size: ${blob.width ?? "default"} x ${blob.height ?? "default"}`,
+      `hidden: ${!!blob.hidden}`,
+      `locked: ${!!blob.locked}`,
+      `selected: ${isSelected}`,
+      `partOfMultiSelection: ${isPartOfMultiSelection}`,
+      `createdAt: ${blob.createdAt ?? "—"}`,
+      `updatedAt: ${blob.updatedAt ?? "—"}`,
+      `contentLength: ${content.length}`,
+      `contentPreview: ${content.slice(0, 80).replace(/\n/g, " ")}${content.length > 80 ? "…" : ""}`,
+    ];
+    void navigator.clipboard.writeText(lines.join("\n"));
+  }, [blob, isSelected, isPartOfMultiSelection]);
 
   const blobMenuItems = (
     <>
@@ -1310,6 +1365,18 @@ export function BlobCard({
       >
         Copy all
       </button>
+      {userEmail === "danrobbins@gmail.com" && (
+        <button
+          type="button"
+          className={styles.blobMenuItem}
+          role="menuitem"
+          data-testid="blob-menu-copy-debug-info"
+          onPointerDown={runAndClose(copyDebugInfo)}
+          onClick={runAndClose(copyDebugInfo)}
+        >
+          Copy debug info
+        </button>
+      )}
       {blob.locked ? (
         <button
           type="button"
@@ -1338,7 +1405,7 @@ export function BlobCard({
         className={styles.blobMenuItem}
         role="menuitem"
         data-testid="blob-menu-remove-empty-lines"
-        disabled={blob.locked || !onUpdateContent}
+        disabled={blob.locked || !onUpdateContent || !hasEmptyLines(markdownToLines(blob.content ?? ""))}
         onPointerDown={runAndClose(() => {
           if (blob.locked || !onUpdateContent) return;
           const lines = markdownToLines(blob.content ?? "");
@@ -1396,6 +1463,7 @@ export function BlobCard({
   if (
     typeof window !== "undefined" &&
     portal?.portalReady &&
+    blobIsInView &&
     scale > 0
   ) {
     const screenLeft = portaledLeft * scale + pan.x;
@@ -1518,11 +1586,15 @@ export function BlobCard({
         data-selected={isSelected || undefined}
         data-focused={hasContentFocus || undefined}
         data-locked={blob.locked || undefined}
+        data-mobile-fill={platformMode === "mobile" && effectiveH != null ? true : undefined}
+        data-fixed-height={effectiveH != null ? true : undefined}
         style={
           blobMarkdownView === "preview"
-            ? effectiveW != null
-              ? { width: effectiveW, minWidth: effectiveW, maxWidth: effectiveW }
-              : undefined
+            ? effectiveW != null && effectiveH != null
+              ? { width: effectiveW, height: effectiveH, minWidth: effectiveW, maxWidth: effectiveW, minHeight: effectiveH }
+              : effectiveW != null
+                ? { width: effectiveW, minWidth: effectiveW, maxWidth: effectiveW }
+                : undefined
             : effectiveW != null && effectiveH != null
               ? { width: effectiveW, height: effectiveH, minWidth: effectiveW, maxWidth: effectiveW, minHeight: effectiveH }
               : undefined
@@ -1728,7 +1800,7 @@ export function BlobCard({
     </div>
   );
 
-  if (portal?.portalReady && portal.portalRef.current) {
+  if (portal?.portalReady && portal.portalRef.current && blobIsInView) {
     return (
       <>
         {cardBody}
@@ -1814,11 +1886,15 @@ export function BlobCard({
           data-selected={isSelected || undefined}
           data-focused={hasContentFocus || undefined}
           data-locked={blob.locked || undefined}
+          data-mobile-fill={platformMode === "mobile" && effectiveH != null ? true : undefined}
+          data-fixed-height={effectiveH != null ? true : undefined}
           style={
             blobMarkdownView === "preview"
-              ? effectiveW != null
-                ? { width: effectiveW, minWidth: effectiveW, maxWidth: effectiveW }
-                : undefined
+              ? effectiveW != null && effectiveH != null
+                ? { width: effectiveW, height: effectiveH, minWidth: effectiveW, maxWidth: effectiveW, minHeight: effectiveH }
+                : effectiveW != null
+                  ? { width: effectiveW, minWidth: effectiveW, maxWidth: effectiveW }
+                  : undefined
               : effectiveW != null && effectiveH != null
                 ? { width: effectiveW, height: effectiveH, minWidth: effectiveW, maxWidth: effectiveW, minHeight: effectiveH }
                 : undefined
