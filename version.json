@@ -1,6 +1,6 @@
 {
   "version": "1.0.0",
   "updates": [
-    "Added \"Remove empty lines\" to the blob \"...\" menu (and multi-select menu); removes lines that are blank or only a bullet."
+    "While waiting for the Blobby summary, Blobby cycles through the \"look\" animations; when the summary returns, Blobby returns to idle animations."
   ]
 }

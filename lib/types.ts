@@ -32,6 +32,9 @@ export interface Blob {
 /** How blob text is shown: raw markdown source or preview (line-based editor). */
 export type BlobMarkdownView = "raw" | "preview";
 
+/** Merge detection: strict = cursor must be inside other blob's merge region; loose = blob rects overlap/touch. */
+export type MergingMode = "strict" | "loose";
+
 export interface Preferences {
   theme: "light" | "dark";
   blobbyColor: string;
@@ -41,6 +44,10 @@ export interface Preferences {
   blobbyCommenting: "silent" | "commenting";
   /** Blob text: show raw markdown or preview (bullets/todos). */
   blobMarkdownView: BlobMarkdownView;
+  /** Merge cues: strict = cursor inside merge region; loose = blob bounds overlap/touch. */
+  mergingMode: MergingMode;
+  /** Merge region margin in world px (10–200). Padding around each blob for merge detection/cues. */
+  mergeMarginPx: number;
 }
 
 export const DEFAULT_PREFERENCES: Preferences = {
@@ -49,6 +56,8 @@ export const DEFAULT_PREFERENCES: Preferences = {
   blobbyBackerSizePx: 200,
   blobbyCommenting: "silent",
   blobMarkdownView: "preview",
+  mergingMode: "strict",
+  mergeMarginPx: 50,
 };
 
 export const BLOBBY_GRID_ROWS = 3;

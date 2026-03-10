@@ -275,7 +275,7 @@ export function BlobsProvider({ children }: { children: ReactNode }) {
     (p: Preferences | ((prev: Preferences) => Preferences)) => {
       setPreferencesState((prev) => {
         const next = typeof p === "function" ? p(prev) : p;
-        if (!userId) savePreferences(next);
+        if (userId) savePreferences(next);
         return next;
       });
     },

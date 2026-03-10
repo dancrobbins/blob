@@ -34,6 +34,16 @@ export function overlapArea(a: BlobBounds, b: BlobBounds): number {
   return (right - left) * (bottom - top);
 }
 
+/** True if point (x, y) is inside the rect (including edges). */
+export function pointInRect(x: number, y: number, r: BlobBounds): boolean {
+  return (
+    r.left <= x &&
+    x <= r.left + r.width &&
+    r.top <= y &&
+    y <= r.top + r.height
+  );
+}
+
 /** Expand blob bounds by padding on all sides to get the merge-cue rect. */
 export function getMergeCueRect(bounds: BlobBounds, padding: number = MERGE_CUE_PADDING): BlobBounds {
   return {

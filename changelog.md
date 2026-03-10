@@ -1,5 +1,30 @@
 # Changelog
 
+## 2026-03-09 (Blobby look animations while summary loading)
+- While the LLM summary is loading after tapping Blobby, Blobby randomly cycles through the \"look\" animations (from `assets/animations/look/` or `public/assets/animations/look/`). When the summary returns, Blobby switches back to idle animations.
+
+## 2026-03-09 (Strict merge insert position by cursor)
+- In **Strict** merging mode, whether the dragged blob merges at the top or bottom of the target is now based on the **cursor** position relative to the target blob's vertical halfway line: cursor above the center → insert at top; at or below → insert at bottom. Loose mode still uses the dragging blob's center vs target center.
+
+## 2026-03-09 (Merge margin slider)
+- Main menu: **Merge margin** slider (10–200 px, default 50) controls the padding around each blob used for merge regions. The merge cue outlines and merge-on-release logic (Strict and Loose) now use this value instead of a fixed 12 px margin. Preference is saved when logged in.
+
+## 2026-03-09 (Blobby tap = new summary, no stored chat while loading)
+- Tapping Blobby always requests a new LLM summary. While the summary is loading, the previously stored chat is not shown (only a loading state). When the new summary returns, it becomes the latest entry in the Blobby log.
+
+## 2026-03-09 (Enter at start of line inserts above)
+- In blob preview editing, when the caret is at the start of a line (e.g. after pressing Home) and you press Enter, a new line is now inserted **above** the current line and the caret moves into it. Previously the new line was incorrectly inserted below the first line.
+
+## 2026-03-09 (merge region = card rect + margin, overlay from live DOM only)
+- Merge region for every blob is now the **card element** (`[data-blob-card-inner]` — the visible rounded rectangle) plus the fixed 12px margin. The overlay only renders when live DOM bounds are available (no stale store fallback), so the cue outline can never be the wrong size (e.g. showing `DEFAULT_BLOB_W × DEFAULT_BLOB_H` for blobs with no explicit size).
+
+## 2026-03-09 (merge region = blob shape + fixed margin, always)
+- In Strict merging mode, the **static** blob’s merge region is now computed from its **visible shape** (the content area, `[data-testid="blob-content"]`) plus the margin, with a fixed margin on all sides, for every blob in both modes. So “size of the blob” for merging is the visible shape; the merge region is that shape + margin, and the cursor must be inside that to trigger merge cues.
+
+## 2026-03-09 (Merging toggle and save-when-logged-in)
+- Main menu: new **Merging** toggle with **Strict** (default) and **Loose**. Strict: merge cues and merge-on-release only when the cursor (pointer) is inside the other blob's merge region (12px-padded rect). Loose: previous behavior (blob rects overlap or touch).
+- Preferences (including Merging) are now saved only when you are logged in; when logged out, preferences are session-only and reset on refresh.
+
 ## 2026-03-09 (Remove empty lines menu option)
 - Added "Remove empty lines" to the blob "..." menu (single blob and multi-select). When chosen, it removes any lines that are blank or only a bullet from the blob(s).
 
@@ -18,8 +43,11 @@
 ## 2026-03-09 (drag blob edge auto-pan)
 - When dragging a blob, if the cursor reaches the viewport edge (top, bottom, left, or right), the canvas now auto-pans in that direction so the dragged blob stays in view. Panning starts as soon as the cursor touches the edge and continues at a fixed speed while at the edge.
 
+## 2026-03-09 (user number from full presence state)
+- The "Name 2" suffix for multiple tabs of the same account was never shown because we built the presence list from *others only*, so each tab only ever saw one other presence and the per-user count was always 1. We now build displayLabels from the *full* presence state (including our own session), assign "Name 1" / "Name 2" by userId, then filter to others and attach the precomputed label. So the other tab's cursor shows "Daniel 2" (or "Daniel 1") correctly.
+
 ## 2026-03-09 (remote cursor real-time and user number)
-- Remote cursor moves were slow because the hot-path DOM callback was only invoked on join/leave; Supabase delivers cursor updates via **sync** events. Sync now also invokes the callback so cursor position updates apply directly to the DOM every time. React state (otherPresences) is only updated when the set of session IDs changes (someone joins or leaves), so we don't re-render on every move and the "Name 2" suffix for multiple sessions of the same account is correct and stable.
+- Remote cursor moves were slow because the hot-path DOM callback was only invoked on join/leave; Supabase delivers cursor updates via **sync** events. Sync now also invokes the callback so cursor position updates apply directly to the DOM every time. React state (otherPresences) is only updated when the set of session IDs changes (someone joins or leaves), so we don't re-render on every move.
 
 ## 2026-03-09 (single tap to create blob — root cause fixed)
 - Removed accidental setSelectedIds([blob.id]) call from onFocus that was added during the insertion-point fix. It caused the blob to become "selected" whenever it was focused, so the selection-guard in handlePointerUp always blocked the next canvas tap. Single tap on empty canvas now reliably creates a new blob.

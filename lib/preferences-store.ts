@@ -17,6 +17,11 @@ export function loadPreferences(): Preferences {
       blobbyBackerSizePx: Number.isFinite(clamped) ? clamped : DEFAULT_PREFERENCES.blobbyBackerSizePx,
       blobbyCommenting: parsed.blobbyCommenting === "commenting" ? "commenting" : DEFAULT_PREFERENCES.blobbyCommenting,
       blobMarkdownView: parsed.blobMarkdownView === "raw" ? "raw" : DEFAULT_PREFERENCES.blobMarkdownView,
+      mergingMode: parsed.mergingMode === "loose" ? "loose" : DEFAULT_PREFERENCES.mergingMode,
+      mergeMarginPx: (() => {
+        const v = Number(parsed.mergeMarginPx);
+        return Number.isFinite(v) ? Math.min(200, Math.max(10, v)) : DEFAULT_PREFERENCES.mergeMarginPx;
+      })(),
     };
   } catch {
     return DEFAULT_PREFERENCES;
@@ -56,5 +61,10 @@ export function mergeCloudPreferences(
     blobbyBackerSizePx: Number.isFinite(clamped) ? clamped : current.blobbyBackerSizePx,
     blobbyCommenting: cloud.blobbyCommenting === "commenting" ? "commenting" : current.blobbyCommenting,
     blobMarkdownView: cloud.blobMarkdownView === "raw" ? "raw" : current.blobMarkdownView,
+    mergingMode: cloud.mergingMode === "loose" ? "loose" : current.mergingMode,
+    mergeMarginPx: (() => {
+      const v = cloud.mergeMarginPx ?? current.mergeMarginPx;
+      return Number.isFinite(v) ? Math.min(200, Math.max(10, v)) : current.mergeMarginPx;
+    })(),
   };
 }

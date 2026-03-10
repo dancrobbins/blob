@@ -124,6 +124,33 @@ export function PresenceProvider({ children }: { children: ReactNode }) {
 
     function buildPresenceList() {
       const state = channel.presenceState();
+      const allPresences: Array<{ sessionId: string; userId: string; displayName: string }> = [];
+      for (const key of Object.keys(state)) {
+        const joins = state[key] as Array<Record<string, unknown>>;
+        if (!Array.isArray(joins)) continue;
+        for (const p of joins) {
+          const sid = (p.sessionId as string) ?? "";
+          const uid = (p.userId as string) ?? "";
+          const name = (p.displayName as string) ?? "Guest";
+          allPresences.push({ sessionId: sid, userId: uid, displayName: name });
+        }
+      }
+      const byUser = new Map<string, typeof allPresences>();
+      for (const p of allPresences) {
+        const arr = byUser.get(p.userId) ?? [];
+        arr.push(p);
+        byUser.set(p.userId, arr);
+      }
+      const sessionIdToLabel = new Map<string, string>();
+      for (const [, arr] of byUser) {
+        arr.sort((a, b) => a.sessionId.localeCompare(b.sessionId));
+        arr.forEach((p, i) => {
+          sessionIdToLabel.set(
+            p.sessionId,
+            arr.length > 1 ? `${p.displayName} ${i + 1}` : p.displayName
+          );
+        });
+      }
       const list: OtherPresence[] = [];
       for (const key of Object.keys(state)) {
         const joins = state[key] as Array<Record<string, unknown>>;
@@ -143,21 +170,9 @@ export function PresenceProvider({ children }: { children: ReactNode }) {
             avatarUrl: avatar,
             worldX: wx,
             worldY: wy,
-            displayLabel: name,
+            displayLabel: sessionIdToLabel.get(sid ?? "") ?? name,
           });
         }
-      }
-      const byUser = new Map<string, typeof list>();
-      for (const p of list) {
-        const arr = byUser.get(p.userId) ?? [];
-        arr.push(p);
-        byUser.set(p.userId, arr);
-      }
-      for (const [, arr] of byUser) {
-        arr.sort((a, b) => a.sessionId.localeCompare(b.sessionId));
-        arr.forEach((p, i) => {
-          p.displayLabel = arr.length > 1 ? `${p.displayName} ${i + 1}` : p.displayName;
-        });
       }
       return list;
     }

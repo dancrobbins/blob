@@ -5,7 +5,7 @@ import React, { useEffect, useRef, useCallback, useState } from "react";
 const SIZE = 100; // blobby video size
 const BACK_CIRCLE_SIZE = Math.round(SIZE * 1.1); // 10% bigger, centered under blobby
 
-type Mode = "idle" | "jump";
+type Mode = "idle" | "jump" | "look";
 
 function shuffle<T>(arr: T[]): T[] {
   const out = [...arr];
@@ -45,25 +45,30 @@ function pickNextFromRemaining(remaining: string[], allFiles: string[]): { next:
   return { next, remaining: list };
 }
 
-export function Blobby() {
+type BlobbyProps = { summaryLoading?: boolean };
+
+export function Blobby({ summaryLoading = false }: BlobbyProps) {
   const videoARef = useRef<HTMLVideoElement>(null);
   const videoBRef = useRef<HTMLVideoElement>(null);
 
   const [idleFiles, setIdleFiles] = useState<string[]>([]);
   const [jumpFiles, setJumpFiles] = useState<string[]>([]);
+  const [lookFiles, setLookFiles] = useState<string[]>([]);
   const [mode, setMode] = useState<Mode>("idle");
   const [src, setSrc] = useState<SrcState | null>(null);
   const [visibleA, setVisibleA] = useState(true);
 
-  // On app load, discover idle and jump animations
+  // On app load, discover idle, jump, and look animations
   useEffect(() => {
     fetch("/api/animations", { cache: "no-store" })
       .then((r) => r.json())
-      .then((data: { idle?: string[]; jump?: string[] }) => {
+      .then((data: { idle?: string[]; jump?: string[]; look?: string[] }) => {
         const idle = Array.isArray(data?.idle) ? data.idle : [];
-        const jump = Array.isArray(data?.jump) ? data.jump : [];
+        const jump = Array.isArray(data?.jump) ? data.jump : idle;
+        const look = Array.isArray(data?.look) ? data.look : [];
         setIdleFiles(idle);
         setJumpFiles(jump.length > 0 ? jump : idle);
+        setLookFiles(look.length > 0 ? look : []);
         const list = idle.length > 0 ? idle : jump;
         if (list.length > 0) {
           setSrc(initialBlobbySrc(list));
@@ -78,17 +83,29 @@ export function Blobby() {
 
   const handleEnded = useCallback(() => {
     if (!src) return;
-    const nextMode: Mode = src.nextMode === "jump" ? "idle" : "idle";
+    // While summary is loading, stay in "look" and cycle look clips; otherwise jump → idle, else idle
+    const nextMode: Mode =
+      summaryLoading && lookFiles.length > 0
+        ? "look"
+        : src.nextMode === "jump"
+          ? "idle"
+          : "idle";
     if (src.nextMode === "jump") setMode("idle");
+    if (summaryLoading && lookFiles.length > 0) setMode("look");
     setSrc((prev) => {
       if (!prev) return prev;
       const activeSrc = prev.nextSrc;
       const activeMode = prev.nextMode;
-      const nextFiles = nextMode === "idle" ? idleFiles : jumpFiles.length > 0 ? jumpFiles : idleFiles;
+      const nextFiles =
+        nextMode === "look"
+          ? lookFiles
+          : nextMode === "idle"
+            ? idleFiles
+            : jumpFiles.length > 0
+              ? jumpFiles
+              : idleFiles;
       const remainingForPick =
-        nextMode === prev.nextMode
-          ? prev.remaining.filter((f) => f !== prev.nextSrc)
-          : [];
+        nextMode === prev.nextMode ? prev.remaining.filter((f) => f !== prev.nextSrc) : [];
       const { next, remaining: nextRemaining } = pickNextFromRemaining(remainingForPick, nextFiles);
       return { activeSrc, activeMode, nextSrc: next, nextMode: nextMode, remaining: nextRemaining };
     });
@@ -99,9 +116,10 @@ export function Blobby() {
       setVisibleA(true);
       tryPlay(videoARef.current);
     }
-  }, [visibleA, tryPlay, src, idleFiles, jumpFiles]);
+  }, [visibleA, tryPlay, src, idleFiles, jumpFiles, lookFiles, summaryLoading]);
 
   const handleTap = useCallback(() => {
+    if (summaryLoading && lookFiles.length > 0) return; // stay in look mode while waiting for summary
     setMode("jump");
     const list = jumpFiles.length > 0 ? jumpFiles : idleFiles;
     if (list.length > 0) {
@@ -110,7 +128,44 @@ export function Blobby() {
       const remaining = list.filter((f) => f !== next);
       setSrc((prev) => (prev ? { ...prev, nextSrc: next, nextMode: "jump", remaining } : prev));
     }
-  }, [idleFiles, jumpFiles]);
+  }, [idleFiles, jumpFiles, summaryLoading, lookFiles.length]);
+
+  const prevSummaryLoadingRef = useRef(false);
+  // When summary is loading, switch to look mode and cycle look clips; when done, return to idle
+  useEffect(() => {
+    if (idleFiles.length === 0 && lookFiles.length === 0) return;
+    const wasLoading = prevSummaryLoadingRef.current;
+    prevSummaryLoadingRef.current = summaryLoading;
+    if (summaryLoading && lookFiles.length > 0) {
+      setMode("look");
+      const list = shuffle([...lookFiles]);
+      const activeSrc = list.pop()!;
+      const nextSrc = list.length > 0 ? list.pop()! : lookFiles[0]!;
+      setSrc({
+        activeSrc,
+        activeMode: "look",
+        nextSrc,
+        nextMode: "look",
+        remaining: list,
+      });
+      setVisibleA(true);
+      tryPlay(videoARef.current);
+    } else if (wasLoading && !summaryLoading && idleFiles.length > 0) {
+      setMode("idle");
+      const list = shuffle([...idleFiles]);
+      const activeSrc = list.pop()!;
+      const nextSrc = list.length > 0 ? list.pop()! : activeSrc;
+      setSrc({
+        activeSrc,
+        activeMode: "idle",
+        nextSrc,
+        nextMode: "idle",
+        remaining: list,
+      });
+      setVisibleA(true);
+      tryPlay(videoARef.current);
+    }
+  }, [summaryLoading, lookFiles.length, idleFiles.length]);
 
   // Initial play and user-gesture fallback for autoplay policy
   useEffect(() => {

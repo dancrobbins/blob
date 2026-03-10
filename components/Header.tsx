@@ -501,6 +501,55 @@ export function Header({
               </div>
             </div>
             <div className={styles.menuSection}>
+              <span className={styles.menuLabel}>Merging</span>
+              <div className={styles.themeTabs} role="tablist" aria-label="Merging mode">
+                <div
+                  className={styles.themeTabSelector}
+                  style={{
+                    transform:
+                      preferences.mergingMode === "loose"
+                        ? "translateX(100%)"
+                        : "translateX(0)",
+                  }}
+                  aria-hidden
+                />
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={preferences.mergingMode === "strict"}
+                  className={styles.themeTab}
+                  onClick={() => setPreferences((p) => ({ ...p, mergingMode: "strict" }))}
+                >
+                  Strict
+                </button>
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={preferences.mergingMode === "loose"}
+                  className={styles.themeTab}
+                  onClick={() => setPreferences((p) => ({ ...p, mergingMode: "loose" }))}
+                >
+                  Loose
+                </button>
+              </div>
+              <div className={styles.backerSliderWrap}>
+                <span className={styles.menuLabel}>Merge margin</span>
+                <input
+                  type="range"
+                  min={10}
+                  max={200}
+                  value={preferences.mergeMarginPx}
+                  onChange={(e) => {
+                    const v = Math.min(200, Math.max(10, Number(e.target.value)));
+                    setPreferences((p) => ({ ...p, mergeMarginPx: v }));
+                  }}
+                  className={styles.backerSlider}
+                  aria-label="Merge margin"
+                />
+                <span className={styles.backerSliderValue} aria-hidden>{preferences.mergeMarginPx}</span>
+              </div>
+            </div>
+            <div className={styles.menuSection}>
               <button
                 type="button"
                 className={styles.menuAction}

@@ -1097,9 +1097,14 @@ export function BlobCard({
         newLineDiv.appendChild(newBullet);
         newLineDiv.appendChild(newTextSpan);
 
-        const nextLine = lineDiv.nextElementSibling;
-        if (nextLine) el.insertBefore(newLineDiv, nextLine);
-        else el.appendChild(newLineDiv);
+        const atStartOfLine = isCaretBeforeBullet(el);
+        if (atStartOfLine) {
+          el.insertBefore(newLineDiv, lineDiv);
+        } else {
+          const nextLine = lineDiv.nextElementSibling;
+          if (nextLine) el.insertBefore(newLineDiv, nextLine);
+          else el.appendChild(newLineDiv);
+        }
 
         const r = document.createRange();
         r.setStart(newTextSpan, 0);

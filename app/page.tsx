@@ -18,7 +18,7 @@ import { blobToPlainText } from "@/lib/blob-lines";
 import { linesToMarkdown, markdownToLines, removeEmptyLines, isBlobContentEmpty } from "@/lib/blob-markdown";
 import { getBlobBounds, SHOW_ALL_CONTROLS_LEFT_PX } from "@/lib/blob-constants";
 import { dispatchCloseMenus } from "@/lib/menu-close-event";
-import { gapBetweenRects, getMergeCueRect, MERGE_CUE_PADDING, overlapArea } from "@/lib/blob-boundary-path";
+import { gapBetweenRects, getMergeCueRect, overlapArea, pointInRect } from "@/lib/blob-boundary-path";
 import { BlobBoundaryOverlay } from "@/components/BlobBoundaryOverlay";
 import { ControlsPortalProvider, useControlsPortal } from "@/contexts/ControlsPortalContext";
 import { PopupPortalProvider, usePopupPortal } from "@/contexts/PopupPortalContext";
@@ -178,6 +178,12 @@ export default function Home() {
   const dragCursorRef = useRef({ clientX: 0, clientY: 0 });
   /** World-space pick offset for the dragging blob (cursor world pos - blob world pos at drag start). */
   const dragPickOffsetRef = useRef<{ x: number; y: number } | null>(null);
+  /** Merging mode for the merge rAF (strict = cursor in merge region; loose = blob overlap). */
+  const mergingModeRef = useRef<"strict" | "loose">("strict");
+  mergingModeRef.current = preferences.mergingMode;
+  /** Merge region margin (world px) for the merge rAF. */
+  const mergeMarginPxRef = useRef(50);
+  mergeMarginPxRef.current = preferences.mergeMarginPx;
 
   const [focusBlobId, setFocusBlobId] = useState<string | null>(null);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
@@ -200,8 +206,6 @@ export default function Home() {
   const backerLeaveGraceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const recallHideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [draggingBlobId, setDraggingBlobId] = useState<string | null>(null);
-  /** Live bounds of the dragging blob from DOM (updated each frame) so merge target matches what's on screen. */
-  const [liveDragBounds, setLiveDragBounds] = useState<Bounds | null>(null);
 
   const visibleBlobs = React.useMemo(
     () => blobs.filter((b) => !b.hidden),
@@ -264,7 +268,6 @@ export default function Home() {
   // During drag, read all blob card positions from DOM every frame and pick the best merge target.
   useLayoutEffect(() => {
     if (!draggingBlobId) {
-      setLiveDragBounds(null);
       setLiveMergeState(null);
       return;
     }
@@ -273,7 +276,6 @@ export default function Home() {
       const inner = canvasInnerRef.current;
       const id = draggingBlobId;
       if (!inner || !id) {
-        setLiveDragBounds(null);
         setLiveMergeState(null);
         return;
       }
@@ -288,44 +290,74 @@ export default function Home() {
         height: r.height / s,
       });
 
-      const elA = inner.querySelector<HTMLElement>(`[data-blob-card][data-blob-id="${id}"] [data-blob-card-inner]`);
-      if (!elA) { rafId = requestAnimationFrame(tick); return; }
-      const boundsA = toWorld(elA.getBoundingClientRect());
-      setLiveDragBounds(boundsA);
+      // Blob shape = the card (data-blob-card-inner) — the visible rounded rect the user sees.
+      // Merge region = that shape + fixed margin on all sides.
+      const getBlobShapeBounds = (blobId: string): Bounds | null => {
+        const el = inner.querySelector<HTMLElement>(`[data-blob-card][data-blob-id="${blobId}"] [data-blob-card-inner]`);
+        return el ? toWorld(el.getBoundingClientRect()) : null;
+      };
 
-      // Read all other visible blobs from DOM and find best merge target.
+      const boundsA = getBlobShapeBounds(id);
+      if (!boundsA) { rafId = requestAnimationFrame(tick); return; }
+
       const visible = visibleBlobsRef.current;
+      const strict = mergingModeRef.current === "strict";
+      const cursorWorld = strict
+        ? {
+            x: (dragCursorRef.current.clientX - p.x) / s,
+            y: (dragCursorRef.current.clientY - p.y) / s,
+          }
+        : null;
+
       let bestId: string | null = null;
       let bestGap = Infinity;
       let bestOverlap = 0;
       let bestBoundsB: Bounds | null = null;
 
-      for (const b of visible) {
-        if (b.id === id) continue;
-        const elB = inner.querySelector<HTMLElement>(`[data-blob-card][data-blob-id="${b.id}"] [data-blob-card-inner]`);
-        if (!elB) continue;
-        const boundsB = toWorld(elB.getBoundingClientRect());
-        const gap = gapBetweenRects(boundsA, boundsB);
-        if (gap >= CLOSE_THRESHOLD) continue;
-        const overlap = overlapArea(boundsA, boundsB);
-        const strictlyBetter =
-          bestId == null ||
-          overlap > bestOverlap ||
-          (overlap === bestOverlap && gap < bestGap);
-        if (strictlyBetter) {
-          bestId = b.id;
-          bestGap = gap;
-          bestOverlap = overlap;
-          bestBoundsB = boundsB;
+      if (strict && cursorWorld) {
+        // Strict: merge region = blob shape + fixed margin; cursor must be inside that.
+        let bestCueArea = Infinity;
+        for (const b of visible) {
+          if (b.id === id) continue;
+          const shapeB = getBlobShapeBounds(b.id);
+          if (!shapeB) continue;
+          const cueB = getMergeCueRect(shapeB, mergeMarginPxRef.current);
+          if (!pointInRect(cursorWorld.x, cursorWorld.y, cueB)) continue;
+          const area = cueB.width * cueB.height;
+          if (area < bestCueArea) {
+            bestId = b.id;
+            bestCueArea = area;
+            bestBoundsB = shapeB;
+          }
+        }
+      } else {
+        // Loose: merge region = same blob shape + margin; pick by overlap of those shapes.
+        for (const b of visible) {
+          if (b.id === id) continue;
+          const shapeB = getBlobShapeBounds(b.id);
+          if (!shapeB) continue;
+          const gap = gapBetweenRects(boundsA, shapeB);
+          if (gap >= CLOSE_THRESHOLD) continue;
+          const overlap = overlapArea(boundsA, shapeB);
+          const strictlyBetter =
+            bestId == null ||
+            overlap > bestOverlap ||
+            (overlap === bestOverlap && gap < bestGap);
+          if (strictlyBetter) {
+            bestId = b.id;
+            bestGap = gap;
+            bestOverlap = overlap;
+            bestBoundsB = shapeB;
+          }
         }
       }
 
       if (bestId == null || bestBoundsB == null) {
         setLiveMergeState(null);
       } else {
-        const cueA = getMergeCueRect(boundsA, MERGE_CUE_PADDING);
-        const cueB = getMergeCueRect(bestBoundsB, MERGE_CUE_PADDING);
-        const mergePossible = gapBetweenRects(cueA, cueB) <= 0;
+        const mergePossible = strict
+          ? true
+          : gapBetweenRects(getMergeCueRect(boundsA, mergeMarginPxRef.current), getMergeCueRect(bestBoundsB, mergeMarginPxRef.current)) <= 0;
         setLiveMergeState({ closeTargetId: bestId, mergePossible, boundsA, boundsB: bestBoundsB });
       }
 
@@ -334,7 +366,6 @@ export default function Home() {
     rafId = requestAnimationFrame(tick);
     return () => {
       cancelAnimationFrame(rafId);
-      setLiveDragBounds(null);
       setLiveMergeState(null);
     };
   }, [draggingBlobId]);
@@ -397,55 +428,17 @@ export default function Home() {
     };
   }, [draggingBlobId, dispatch]);
 
-  // Merge cues and merge target.
-  // Primary: liveMergeState (DOM-driven, updated every frame).
-  // Fallback: store-based bounds (for the brief moment before the rAF fires on drag start).
-  const { closeTargetId, mergePossible, mergeBoundsA, mergeBoundsB } = React.useMemo(() => {
+  // Merge cues: primary = liveMergeState (DOM-driven every frame).
+  // Fallback for handleDragEnd (merge on release): store-based bounds for when rAF hasn't updated yet.
+  const { closeTargetId, mergePossible } = React.useMemo(() => {
     if (liveMergeState) {
       return {
         closeTargetId: liveMergeState.closeTargetId,
         mergePossible: liveMergeState.mergePossible,
-        mergeBoundsA: liveMergeState.boundsA,
-        mergeBoundsB: liveMergeState.boundsB,
       };
     }
-    if (!draggingBlobId || visibleBlobs.length < 2) {
-      return { closeTargetId: null, mergePossible: false, mergeBoundsA: null, mergeBoundsB: null };
-    }
-    const draggingBlob = visibleBlobs.find((b) => b.id === draggingBlobId);
-    if (!draggingBlob) {
-      return { closeTargetId: null, mergePossible: false, mergeBoundsA: null, mergeBoundsB: null };
-    }
-    const boundsA = liveDragBounds ?? getBlobBounds(draggingBlob);
-    let bestId: string | null = null;
-    let bestGap = Infinity;
-    let bestOverlap = 0;
-    let bestBoundsB: Bounds | null = null;
-    for (const b of visibleBlobs) {
-      if (b.id === draggingBlobId) continue;
-      const boundsB = getBlobBounds(b);
-      const gap = gapBetweenRects(boundsA, boundsB);
-      if (gap >= CLOSE_THRESHOLD) continue;
-      const overlap = overlapArea(boundsA, boundsB);
-      const strictlyBetter =
-        bestId == null ||
-        overlap > bestOverlap ||
-        (overlap === bestOverlap && gap < bestGap);
-      if (strictlyBetter) {
-        bestId = b.id;
-        bestGap = gap;
-        bestOverlap = overlap;
-        bestBoundsB = boundsB;
-      }
-    }
-    if (bestId == null || bestBoundsB == null) {
-      return { closeTargetId: null, mergePossible: false, mergeBoundsA: boundsA, mergeBoundsB: null };
-    }
-    const cueA = getMergeCueRect(boundsA, MERGE_CUE_PADDING);
-    const cueB = getMergeCueRect(bestBoundsB, MERGE_CUE_PADDING);
-    const mergePossible = gapBetweenRects(cueA, cueB) <= 0;
-    return { closeTargetId: bestId, mergePossible, mergeBoundsA: boundsA, mergeBoundsB: bestBoundsB };
-  }, [draggingBlobId, visibleBlobs, liveDragBounds, liveMergeState]);
+    return { closeTargetId: null, mergePossible: false };
+  }, [liveMergeState]);
 
   // Clear LLM summary after 12s — paused while the mouse is over the word box
   useEffect(() => {
@@ -1176,12 +1169,14 @@ export default function Home() {
             transformOrigin: "0 0",
           }}
         >
-        {draggingBlobId && closeTargetId && (liveDragBounds ?? mergeBoundsA) && mergeBoundsB && (() => {
-          const rectA = liveDragBounds ?? mergeBoundsA!;
-          const rectB = mergeBoundsB!;
-          const sourceCenterY = rectA.top + rectA.height / 2;
+        {draggingBlobId && liveMergeState && (() => {
+          const rectA = liveMergeState.boundsA;
+          const rectB = liveMergeState.boundsB;
           const targetMidY = rectB.top + rectB.height / 2;
-          const insertAtTop = sourceCenterY < targetMidY;
+          const insertAtTop =
+            preferences.mergingMode === "strict"
+              ? (dragCursorRef.current.clientY - pan.y) / scale < targetMidY
+              : (rectA.top + rectA.height / 2) < targetMidY;
           const viewport =
             scale > 0 && canvasSize.width > 0 && canvasSize.height > 0
               ? {
@@ -1195,6 +1190,7 @@ export default function Home() {
             <BlobBoundaryOverlay
               rectA={rectA}
               rectB={rectB}
+              mergeMarginPx={preferences.mergeMarginPx}
               isVeryClose={mergePossible}
               insertAtTop={insertAtTop}
               viewport={viewport}
@@ -1359,13 +1355,13 @@ export default function Home() {
         onPointerEnter={handleBlobbyBackerPointerEnter}
         onPointerLeave={handleBlobbyBackerPointerLeave}
       />
-      <Blobby />
+      <Blobby summaryLoading={llmLoading} />
       {(preferences.blobbyCommenting === "commenting" ||
         llmSummary != null ||
         llmLoading ||
         (showRecalledOutput && (lastBlobbyOutput != null || getLastBlobbyLogEntry(blobbyLog) != null))) && (
         <BlobbyWordBox
-          summaryFromTap={llmSummary ?? (showRecalledOutput ? (lastBlobbyOutput ?? getLastBlobbyLogEntry(blobbyLog)) : null)}
+          summaryFromTap={llmLoading ? null : (llmSummary ?? (showRecalledOutput ? (lastBlobbyOutput ?? getLastBlobbyLogEntry(blobbyLog)) : null))}
           summaryLoading={llmLoading}
           onMouseOverChange={setIsBlobbyHovered}
           onLeaveAfterAction={() => {

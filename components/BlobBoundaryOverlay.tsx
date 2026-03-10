@@ -6,7 +6,6 @@ import {
   getSeparateMergeCuesPath,
   getFusedBoundaryPath,
   gapBetweenRects,
-  MERGE_CUE_PADDING,
 } from "@/lib/blob-boundary-path";
 import type { BlobBounds } from "@/lib/blob-constants";
 
@@ -17,20 +16,23 @@ export type ViewportWorld = { top: number; left: number; width: number; height: 
 export function BlobBoundaryOverlay({
   rectA,
   rectB,
+  mergeMarginPx,
   isVeryClose,
   insertAtTop,
   viewport,
 }: {
   rectA: BlobBounds;
   rectB: BlobBounds;
+  /** Merge region margin in world px (padding around each blob for cue outline). */
+  mergeMarginPx: number;
   isVeryClose: boolean;
   /** When set, show a horizontal insertion bar: true = top of target, false = bottom (width = rectB). */
   insertAtTop?: boolean;
   /** Visible canvas area in world coords; used to clamp insertion bar on screen. */
   viewport?: ViewportWorld;
 }) {
-  const cueA = getMergeCueRect(rectA, MERGE_CUE_PADDING);
-  const cueB = getMergeCueRect(rectB, MERGE_CUE_PADDING);
+  const cueA = getMergeCueRect(rectA, mergeMarginPx);
+  const cueB = getMergeCueRect(rectB, mergeMarginPx);
   const cueGap = gapBetweenRects(cueA, cueB);
   // Fused outline and top/bottom insertion bar only when merge bounds touch or overlap.
   const mergePossible = cueGap <= 0;
