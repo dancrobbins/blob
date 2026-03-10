@@ -1,6 +1,6 @@
 {
   "version": "1.0.0",
   "updates": [
-    "Other users' cursor cue: standard pointer icon with tip at cursor; avatar and name bubble directly below and right of pointer base with small gap."
+    "Added \"Remove empty lines\" to the blob \"...\" menu (and multi-select menu); removes lines that are blank or only a bullet."
   ]
 }

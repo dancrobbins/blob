@@ -15,7 +15,8 @@ import type { RealtimeChannel } from "@supabase/supabase-js";
 import { supabase } from "@/lib/supabase";
 
 const PRESENCE_STORAGE_KEY = "blob_presence_session_id";
-const CURSOR_THROTTLE_MS = 50;
+/** How often (ms) we send our cursor position over the wire. */
+const CURSOR_SEND_INTERVAL_MS = 33;
 
 function getOrCreateSessionId(): string {
   if (typeof window === "undefined") return "";
@@ -38,13 +39,18 @@ export type OtherPresence = {
   displayLabel: string;
 };
 
+/** Called whenever any remote cursor moves (hot path — no React re-render). */
+export type CursorMoveCallback = (sessionId: string, worldX: number, worldY: number) => void;
+
 type PresenceContextValue = {
   /** Update local cursor position (world coords). Throttled. No-op when not in channel. */
   updateLocalCursor: (worldX: number, worldY: number) => void;
-  /** Other users' presences (excluding self). */
+  /** Other users' presences (join/leave only, not cursor moves). */
   otherPresences: OtherPresence[];
   /** This tab's session id (to exclude self from display). */
   mySessionId: string | null;
+  /** Register a callback that fires on every remote cursor move (bypasses React state). */
+  setOnCursorMove: (cb: CursorMoveCallback | null) => void;
 };
 
 const PresenceContext = createContext<PresenceContextValue | null>(null);
@@ -55,24 +61,40 @@ export function PresenceProvider({ children }: { children: ReactNode }) {
   const mySessionIdRef = useRef<string | null>(null);
   const [mySessionId, setMySessionId] = useState<string | null>(null);
   const channelRef = useRef<RealtimeChannel | null>(null);
-  const throttleRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastPayloadRef = useRef<Record<string, unknown> | null>(null);
+  const sendTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pendingSendRef = useRef<{ worldX: number; worldY: number } | null>(null);
+  /** Hot-path callback — called directly without setState when a remote cursor moves. */
+  const onCursorMoveRef = useRef<CursorMoveCallback | null>(null);
+  /** Session IDs from last state update; only call setOtherPresences when this set changes (join/leave). */
+  const previousSessionIdsRef = useRef<Set<string>>(new Set());
+
+  const setOnCursorMove = useCallback((cb: CursorMoveCallback | null) => {
+    onCursorMoveRef.current = cb;
+  }, []);
 
   const updateLocalCursor = useCallback((worldX: number, worldY: number) => {
     const ch = channelRef.current;
     const payload = lastPayloadRef.current;
     if (!ch || !payload) return;
 
+    // Always store the latest position so we never send stale coords.
+    pendingSendRef.current = { worldX, worldY };
+
+    if (sendTimerRef.current) return; // already scheduled
+    // Send immediately for the first call, then enforce minimum interval.
     const next = { ...payload, worldX, worldY };
     lastPayloadRef.current = next;
-
-    if (throttleRef.current) return;
     ch.track(next);
-    throttleRef.current = setTimeout(() => {
-      throttleRef.current = null;
-      const latest = lastPayloadRef.current;
-      if (latest) ch.track(latest);
-    }, CURSOR_THROTTLE_MS);
+    sendTimerRef.current = setTimeout(() => {
+      sendTimerRef.current = null;
+      const pending = pendingSendRef.current;
+      if (!pending) return;
+      const latest = { ...lastPayloadRef.current!, ...pending };
+      lastPayloadRef.current = latest;
+      pendingSendRef.current = null;
+      ch.track(latest);
+    }, CURSOR_SEND_INTERVAL_MS);
   }, []);
 
   useEffect(() => {
@@ -100,7 +122,7 @@ export function PresenceProvider({ children }: { children: ReactNode }) {
     const channel = client.channel(channelName);
     channelRef.current = channel;
 
-    function refreshPresencesFromState() {
+    function buildPresenceList() {
       const state = channel.presenceState();
       const list: OtherPresence[] = [];
       for (const key of Object.keys(state)) {
@@ -137,13 +159,44 @@ export function PresenceProvider({ children }: { children: ReactNode }) {
           p.displayLabel = arr.length > 1 ? `${p.displayName} ${i + 1}` : p.displayName;
         });
       }
-      setOtherPresences([...list]);
+      return list;
+    }
+
+    function applyPresenceList(list: OtherPresence[]) {
+      const cb = onCursorMoveRef.current;
+      if (cb) {
+        for (const p of list) {
+          cb(p.sessionId, p.worldX, p.worldY);
+        }
+      }
+      const nextIds = new Set(list.map((p) => p.sessionId));
+      const prev = previousSessionIdsRef.current;
+      const idsChanged =
+        prev.size !== nextIds.size || list.some((p) => !prev.has(p.sessionId));
+      if (idsChanged) {
+        previousSessionIdsRef.current = nextIds;
+        setOtherPresences([...list]);
+      }
+    }
+
+    function onSync() {
+      const list = buildPresenceList();
+      applyPresenceList(list);
+    }
+
+    function onPresenceChange(payload: { event: string }) {
+      if (payload.event === "sync") {
+        onSync();
+        return;
+      }
+      const list = buildPresenceList();
+      applyPresenceList(list);
     }
 
     channel
-      .on("presence", { event: "sync" }, refreshPresencesFromState)
-      .on("presence", { event: "join" }, refreshPresencesFromState)
-      .on("presence", { event: "leave" }, refreshPresencesFromState)
+      .on("presence", { event: "sync" }, onSync)
+      .on("presence", { event: "join" }, onPresenceChange.bind(null, { event: "join" }))
+      .on("presence", { event: "leave" }, onPresenceChange.bind(null, { event: "leave" }))
       .subscribe(async (status) => {
         if (status === "SUBSCRIBED") {
           client.auth.getSession().then(({ data: { session } }) => {
@@ -165,10 +218,11 @@ export function PresenceProvider({ children }: { children: ReactNode }) {
       });
 
     return () => {
-      if (throttleRef.current) {
-        clearTimeout(throttleRef.current);
-        throttleRef.current = null;
+      if (sendTimerRef.current) {
+        clearTimeout(sendTimerRef.current);
+        sendTimerRef.current = null;
       }
+      previousSessionIdsRef.current = new Set();
       client.removeChannel(channel);
       channelRef.current = null;
       lastPayloadRef.current = null;
@@ -180,6 +234,7 @@ export function PresenceProvider({ children }: { children: ReactNode }) {
     updateLocalCursor,
     otherPresences,
     mySessionId,
+    setOnCursorMove,
   };
 
   return (

@@ -1,8 +1,8 @@
 {
-  "buildNumber": 248,
-  "buildTime": "2026-03-09T23:00:13.993Z",
+  "buildNumber": 264,
+  "buildTime": "2026-03-10T00:16:25.526Z",
   "version": "1.0.0",
   "updates": [
-    "Fixed tap in existing blob not activating insertion point: track user focus in a ref instead of state so autoFocus is not triggered for existing blobs."
+    "Added \"Remove empty lines\" to the blob \"...\" menu (and multi-select menu); removes lines that are blank or only a bullet."
   ]
 }

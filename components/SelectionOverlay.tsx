@@ -19,12 +19,15 @@ export function SelectionOverlay({
   onDuplicate,
   onHide,
   onCopyAll,
+  onRemoveEmptyLines,
   allSelectedLocked,
   menuRef,
   onDragStart,
   onMoveSelected,
   onDragEnd,
   scale = 1,
+  panRef: panRefProp,
+  scaleRef: scaleRefProp,
   worldCoordinates = false,
 }: {
   bounds: Bounds;
@@ -34,6 +37,8 @@ export function SelectionOverlay({
   onDuplicate: () => void;
   onHide: () => void;
   onCopyAll?: () => void;
+  /** Remove empty/bullet-only lines from all selected blobs. */
+  onRemoveEmptyLines?: () => void;
   /** When true, show Unlock; otherwise show Lock. */
   allSelectedLocked: boolean;
   menuRef: React.RefObject<HTMLDivElement | null>;
@@ -43,11 +48,14 @@ export function SelectionOverlay({
   onDragEnd?: () => void;
   /** Canvas scale so pointer delta is converted to world space (dx/scale, dy/scale). */
   scale?: number;
+  /** Live camera refs so drag uses always-current values (avoids pick drift during auto-pan). */
+  panRef?: React.RefObject<{ x: number; y: number }>;
+  scaleRef?: React.RefObject<number>;
   /** When true, bounds are in world coordinates and overlay uses position:absolute so it moves with pan/scale. */
   worldCoordinates?: boolean;
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
-  const dragStartRef = useRef<{ clientX: number; clientY: number } | null>(null);
+  const dragStartRef = useRef<{ clientX: number; clientY: number; worldX: number; worldY: number } | null>(null);
 
   useEffect(() => {
     const closeMenus = (e: Event) => {
@@ -76,21 +84,28 @@ export function SelectionOverlay({
       e.preventDefault();
       e.stopPropagation();
       (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
-      dragStartRef.current = { clientX: e.clientX, clientY: e.clientY };
+      const liveScale = scaleRefProp?.current ?? scale;
+      const livePan = panRefProp?.current ?? { x: 0, y: 0 };
+      const worldX = (e.clientX - livePan.x) / (liveScale || 1);
+      const worldY = (e.clientY - livePan.y) / (liveScale || 1);
+      dragStartRef.current = { clientX: e.clientX, clientY: e.clientY, worldX, worldY };
       onDragStart();
     },
-    [onDragStart, onMoveSelected, onDragEnd]
+    [onDragStart, onMoveSelected, onDragEnd, scale, panRefProp, scaleRefProp]
   );
 
   const handleHandlePointerMove = useCallback(
     (e: React.PointerEvent) => {
       const start = dragStartRef.current;
-      if (!start || !onMoveSelected || scale <= 0) return;
-      const screenDx = e.clientX - start.clientX;
-      const screenDy = e.clientY - start.clientY;
-      onMoveSelected(screenDx / scale, screenDy / scale);
+      if (!start || !onMoveSelected) return;
+      const liveScale = scaleRefProp?.current ?? scale;
+      const livePan = panRefProp?.current ?? { x: 0, y: 0 };
+      if ((liveScale || 0) <= 0) return;
+      const worldCursorX = (e.clientX - livePan.x) / liveScale;
+      const worldCursorY = (e.clientY - livePan.y) / liveScale;
+      onMoveSelected(worldCursorX - start.worldX, worldCursorY - start.worldY);
     },
-    [onMoveSelected, scale]
+    [onMoveSelected, scale, panRefProp, scaleRefProp]
   );
 
   const handleHandlePointerUp = useCallback(
@@ -191,6 +206,21 @@ export function SelectionOverlay({
                 }}
               >
                 Copy all
+              </button>
+            )}
+            {onRemoveEmptyLines != null && (
+              <button
+                type="button"
+                className={styles.selectionMenuItem}
+                role="menuitem"
+                data-testid="selection-menu-remove-empty-lines"
+                disabled={allSelectedLocked}
+                onClick={() => {
+                  onRemoveEmptyLines();
+                  setMenuOpen(false);
+                }}
+              >
+                Remove empty lines
               </button>
             )}
             {allSelectedLocked ? (

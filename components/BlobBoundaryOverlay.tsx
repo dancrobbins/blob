@@ -17,14 +17,12 @@ export type ViewportWorld = { top: number; left: number; width: number; height: 
 export function BlobBoundaryOverlay({
   rectA,
   rectB,
-  gap: _gap,
   isVeryClose,
   insertAtTop,
   viewport,
 }: {
   rectA: BlobBounds;
   rectB: BlobBounds;
-  gap: number;
   isVeryClose: boolean;
   /** When set, show a horizontal insertion bar: true = top of target, false = bottom (width = rectB). */
   insertAtTop?: boolean;

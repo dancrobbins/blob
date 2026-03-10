@@ -37,13 +37,15 @@
   box-shadow: 0 2px 12px rgba(0, 0, 0, 0.3);
 }
 
-.card[data-selected] {
+.card[data-selected],
+.card[data-focused] {
   box-shadow:
     0 2px 12px rgba(0, 0, 0, 0.06),
     0 0 0 2px var(--selection-cue, rgba(0, 120, 212, 0.35));
 }
 
-[data-theme="dark"] .card[data-selected] {
+[data-theme="dark"] .card[data-selected],
+[data-theme="dark"] .card[data-focused] {
   box-shadow:
     0 2px 12px rgba(0, 0, 0, 0.3),
     0 0 0 2px var(--selection-cue, rgba(100, 180, 255, 0.4));
@@ -118,7 +120,7 @@
   top: -5px;
   left: -5px;
   bottom: -5px;
-  right: -24px; /* extend toward blob to bridge SCREEN_GAP + buffer */
+  right: -10px; /* extend toward blob to bridge SCREEN_GAP */
   pointer-events: auto;
   z-index: 0;
 }

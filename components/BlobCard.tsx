@@ -10,7 +10,7 @@ import {
   parseBlobClipboardData,
   parsePastedContent,
 } from "@/lib/blob-lines";
-import { markdownToLines, linesToMarkdown } from "@/lib/blob-markdown";
+import { markdownToLines, linesToMarkdown, removeEmptyLines } from "@/lib/blob-markdown";
 import { useBlobsContext } from "@/contexts/BlobsContext";
 import { useControlsPortal } from "@/contexts/ControlsPortalContext";
 import { usePopupPortal } from "@/contexts/PopupPortalContext";
@@ -384,9 +384,12 @@ export function BlobCard({
   onLock,
   onUnlock,
   onDragStart: onDragStartProp,
+  onDragPickOffset: onDragPickOffsetProp,
   onDragEnd: onDragEndProp,
   scale = 1,
   pan = { x: 0, y: 0 },
+  panRef: panRefProp,
+  scaleRef: scaleRefProp,
   blobbyBackerSizePx = 200,
   isSelected = false,
   isPartOfMultiSelection = false,
@@ -407,10 +410,15 @@ export function BlobCard({
   onLock: () => void;
   onUnlock: () => void;
   onDragStart?: (blobId: string) => void;
+  /** Called at drag-start with the world-space pick offset (cursor world pos minus blob world pos). */
+  onDragPickOffset?: (offsetX: number, offsetY: number) => void;
   onDragEnd?: (blobId: string) => void;
   scale?: number;
   /** For clamping controls to viewport and avoiding blobby. */
   pan?: { x: number; y: number };
+  /** Live pan/scale refs so drag uses always-current camera values (avoids pick-correlation drift during auto-pan). */
+  panRef?: React.RefObject<{ x: number; y: number }>;
+  scaleRef?: React.RefObject<number>;
   /** Blobby backer size in px (for avoiding that region when positioning controls). */
   blobbyBackerSizePx?: number;
   isSelected?: boolean;
@@ -434,7 +442,7 @@ export function BlobCard({
   const [menuOpen, setMenuOpen] = useState(false);
   const [dropdownPosition, setDropdownPosition] = useState<{ top: number; left: number } | null>(null);
   const [dropdownAdjust, setDropdownAdjust] = useState({ x: 0, y: 0 });
-  const dragStart = useRef({ x: 0, y: 0, blobX: 0, blobY: 0 });
+  const dragStart = useRef({ x: 0, y: 0, blobX: 0, blobY: 0, pickOffsetX: 0, pickOffsetY: 0 });
   const popupPortal = usePopupPortal();
 
   const LINK_PREVIEW_HOVER_MS = 3000;
@@ -763,30 +771,42 @@ export function BlobCard({
         dispatchCloseMenus();
         setIsDragging(true);
         onDragStartProp?.(blob.id);
+        const liveScale = scaleRefProp?.current ?? scale;
+        const livePan = panRefProp?.current ?? pan;
+        const worldCursorX = (e.clientX - livePan.x) / liveScale;
+        const worldCursorY = (e.clientY - livePan.y) / liveScale;
         dragStart.current = {
           x: e.clientX,
           y: e.clientY,
           blobX: blob.x,
           blobY: blob.y,
+          pickOffsetX: worldCursorX - blob.x,
+          pickOffsetY: worldCursorY - blob.y,
         };
+        onDragPickOffsetProp?.(worldCursorX - blob.x, worldCursorY - blob.y);
         (e.target as HTMLElement).setPointerCapture?.(e.pointerId);
       }
     },
-    [blob.id, blob.x, blob.y, blob.locked, onDragStartProp]
+    [blob.id, blob.x, blob.y, blob.locked, onDragStartProp, onDragPickOffsetProp, scale, pan, panRefProp, scaleRefProp]
   );
 
   const handlePointerMove = useCallback(
     (e: React.PointerEvent) => {
       if (!isDragging) return;
-      const dx = (e.clientX - dragStart.current.x) / scale;
-      const dy = (e.clientY - dragStart.current.y) / scale;
+      const liveScale = scaleRefProp?.current ?? scale;
+      const livePan = panRefProp?.current ?? pan;
+      if (liveScale === 0) return;
+      const worldCursorX = (e.clientX - livePan.x) / liveScale;
+      const worldCursorY = (e.clientY - livePan.y) / liveScale;
+      const newBlobX = worldCursorX - dragStart.current.pickOffsetX;
+      const newBlobY = worldCursorY - dragStart.current.pickOffsetY;
       if (isPartOfMultiSelection && onMoveSelected) {
-        onMoveSelected(dx, dy);
+        onMoveSelected(newBlobX - dragStart.current.blobX, newBlobY - dragStart.current.blobY);
       } else {
-        onPosition(dragStart.current.blobX + dx, dragStart.current.blobY + dy);
+        onPosition(newBlobX, newBlobY);
       }
     },
-    [isDragging, isPartOfMultiSelection, onMoveSelected, onPosition, scale]
+    [isDragging, isPartOfMultiSelection, onMoveSelected, onPosition, scale, pan, panRefProp, scaleRefProp]
   );
 
   const handlePointerUp = useCallback(
@@ -1094,11 +1114,15 @@ export function BlobCard({
     [blob.locked, dispatchLines, pushUndoSnapshot]
   );
 
+  const [hasContentFocus, setHasContentFocus] = useState(false);
+
   const handleFocus = useCallback(() => {
+    setHasContentFocus(true);
     onFocus();
   }, [onFocus]);
 
   const handleBlur = useCallback(() => {
+    setHasContentFocus(false);
     if (blob.locked) return;
     const el = contentRef.current;
     if (!el) return;
@@ -1308,6 +1332,31 @@ export function BlobCard({
         type="button"
         className={styles.blobMenuItem}
         role="menuitem"
+        data-testid="blob-menu-remove-empty-lines"
+        disabled={blob.locked || !onUpdateContent}
+        onPointerDown={runAndClose(() => {
+          if (blob.locked || !onUpdateContent) return;
+          const lines = markdownToLines(blob.content ?? "");
+          const cleaned = removeEmptyLines(lines);
+          if (cleaned.length !== lines.length) {
+            onUpdateContent(linesToMarkdown(cleaned));
+          }
+        })}
+        onClick={runAndClose(() => {
+          if (blob.locked || !onUpdateContent) return;
+          const lines = markdownToLines(blob.content ?? "");
+          const cleaned = removeEmptyLines(lines);
+          if (cleaned.length !== lines.length) {
+            onUpdateContent(linesToMarkdown(cleaned));
+          }
+        })}
+      >
+        Remove empty lines
+      </button>
+      <button
+        type="button"
+        className={styles.blobMenuItem}
+        role="menuitem"
         data-testid="blob-menu-hide"
         onPointerDown={runAndClose(() => onHide?.())}
         onClick={runAndClose(() => onHide?.())}
@@ -1331,10 +1380,13 @@ export function BlobCard({
    * receives mouse enter. Give it explicit size so hover is kept when moving from
    * dragger to "…" button (avoids button disappearing from hit-region / leave timer).
    * Clamp position so controls stay within viewport and avoid the blobby + backer area. */
-  const WRAPPER_SCREEN_W = SCREEN_GAP + CONTROLS_COLUMN_WIDTH + 24;
+  /* Wrapper right edge extends 4 screen px into the blob so hover stays continuous
+   * when moving toward the blob, but doesn't eat wheel events across the whole blob. */
+  const WRAPPER_BLOB_OVERLAP_PX = 4;
+  const WRAPPER_SCREEN_W = SCREEN_GAP + CONTROLS_COLUMN_WIDTH + WRAPPER_BLOB_OVERLAP_PX;
   const WRAPPER_SCREEN_H = 100;
   const VIEWPORT_PAD = 8;
-  let portaledLeft = effectiveX - (SCREEN_GAP + CONTROLS_COLUMN_WIDTH) / scale;
+  let portaledLeft = effectiveX - (SCREEN_GAP / scale + CONTROLS_COLUMN_WIDTH);
   let portaledTop = effectiveY;
   if (
     typeof window !== "undefined" &&
@@ -1365,11 +1417,11 @@ export function BlobCard({
     ? {
         left: portaledLeft,
         top: portaledTop,
-        width: (SCREEN_GAP + CONTROLS_COLUMN_WIDTH + 24) / scale,
+        width: WRAPPER_SCREEN_W / scale,
         height: 100 / scale,
       }
     : { left: effectiveX, top: effectiveY };
-  const portaledColumnLeft = portal?.portalReady ? 0 : -(SCREEN_GAP + CONTROLS_COLUMN_WIDTH) / scale;
+  const portaledColumnLeft = portal?.portalReady ? 0 : -(SCREEN_GAP / scale + CONTROLS_COLUMN_WIDTH);
 
   const controlsFragment = (
     <div
@@ -1459,6 +1511,7 @@ export function BlobCard({
         className={styles.card}
         data-blob-card-inner
         data-selected={isSelected || undefined}
+        data-focused={hasContentFocus || undefined}
         data-locked={blob.locked || undefined}
         style={
           blobMarkdownView === "preview"
@@ -1703,7 +1756,7 @@ export function BlobCard({
         <div
           className={styles.controlsColumn}
           style={{
-            left: -(SCREEN_GAP + CONTROLS_COLUMN_WIDTH) / scale,
+            left: -(SCREEN_GAP / scale + CONTROLS_COLUMN_WIDTH),
             transform: `scale(${invScale})`,
             transformOrigin: "100% 0",
           }}
@@ -1754,6 +1807,7 @@ export function BlobCard({
           className={styles.card}
           data-blob-card-inner
           data-selected={isSelected || undefined}
+          data-focused={hasContentFocus || undefined}
           data-locked={blob.locked || undefined}
           style={
             blobMarkdownView === "preview"

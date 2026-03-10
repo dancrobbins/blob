@@ -13,15 +13,10 @@
   overflow: visible;
 }
 
-.pointerSvg {
+/* Remote user pointer graphic only (does not change app cursor) */
+.remotePointerIcon {
   position: fixed;
-  overflow: visible;
   pointer-events: none;
-  color: var(--fg);
-}
-
-.pointerIcon {
-  fill: currentColor;
 }
 
 .avatarWrap {

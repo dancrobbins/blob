@@ -15,10 +15,10 @@ import { usePresence } from "@/contexts/PresenceContext";
 import { getLastBlobbyLogEntry } from "@/lib/persistence";
 import { OtherCursors } from "@/components/OtherCursors";
 import { blobToPlainText } from "@/lib/blob-lines";
-import { linesToMarkdown, isBlobContentEmpty } from "@/lib/blob-markdown";
+import { linesToMarkdown, markdownToLines, removeEmptyLines, isBlobContentEmpty } from "@/lib/blob-markdown";
 import { getBlobBounds, SHOW_ALL_CONTROLS_LEFT_PX } from "@/lib/blob-constants";
 import { dispatchCloseMenus } from "@/lib/menu-close-event";
-import { gapBetweenRects, getMergeCueRect, MERGE_CUE_PADDING } from "@/lib/blob-boundary-path";
+import { gapBetweenRects, getMergeCueRect, MERGE_CUE_PADDING, overlapArea } from "@/lib/blob-boundary-path";
 import { BlobBoundaryOverlay } from "@/components/BlobBoundaryOverlay";
 import { ControlsPortalProvider, useControlsPortal } from "@/contexts/ControlsPortalContext";
 import { PopupPortalProvider, usePopupPortal } from "@/contexts/PopupPortalContext";
@@ -87,6 +87,8 @@ const SHOW_ALL_PADDING = 48;
 
 const CLOSE_THRESHOLD = 80;
 const VERY_CLOSE_THRESHOLD = 24;
+/** Pixels to pan per frame when cursor is at viewport edge during blob drag. */
+const DRAG_EDGE_PAN_SPEED = 12;
 
 type Bounds = { left: number; top: number; width: number; height: number };
 
@@ -172,6 +174,10 @@ export default function Home() {
   const panRef = useRef({ x: 0, y: 0 });
   const scaleRef = useRef(1);
   const primaryPointerIdRef = useRef<number | null>(null);
+  /** Cursor position during blob drag (for edge auto-pan). Updated from document pointermove. */
+  const dragCursorRef = useRef({ clientX: 0, clientY: 0 });
+  /** World-space pick offset for the dragging blob (cursor world pos - blob world pos at drag start). */
+  const dragPickOffsetRef = useRef<{ x: number; y: number } | null>(null);
 
   const [focusBlobId, setFocusBlobId] = useState<string | null>(null);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
@@ -196,10 +202,6 @@ export default function Home() {
   const [draggingBlobId, setDraggingBlobId] = useState<string | null>(null);
   /** Live bounds of the dragging blob from DOM (updated each frame) so merge target matches what's on screen. */
   const [liveDragBounds, setLiveDragBounds] = useState<Bounds | null>(null);
-  const [measuredMergeBounds, setMeasuredMergeBounds] = useState<{
-    a: { left: number; top: number; width: number; height: number };
-    b: { left: number; top: number; width: number; height: number };
-  } | null>(null);
 
   const visibleBlobs = React.useMemo(
     () => blobs.filter((b) => !b.hidden),
@@ -251,10 +253,19 @@ export default function Home() {
     };
   }, [pan.x, pan.y, scale, initialCameraPosition, persistCamera]);
 
-  // During drag, read the dragging blob's position from the DOM every frame so merge target matches what's on screen.
+  /** Live merge state computed entirely from DOM rects every frame so there is no React state lag. */
+  const [liveMergeState, setLiveMergeState] = useState<{
+    closeTargetId: string;
+    mergePossible: boolean;
+    boundsA: Bounds;
+    boundsB: Bounds;
+  } | null>(null);
+
+  // During drag, read all blob card positions from DOM every frame and pick the best merge target.
   useLayoutEffect(() => {
-    if (!draggingBlobId || !canvasInnerRef.current) {
+    if (!draggingBlobId) {
       setLiveDragBounds(null);
+      setLiveMergeState(null);
       return;
     }
     let rafId: number;
@@ -263,103 +274,178 @@ export default function Home() {
       const id = draggingBlobId;
       if (!inner || !id) {
         setLiveDragBounds(null);
+        setLiveMergeState(null);
         return;
       }
-      const el = inner.querySelector<HTMLElement>(`[data-blob-card][data-blob-id="${id}"] [data-blob-card-inner]`);
-      if (!el) {
-        rafId = requestAnimationFrame(tick);
-        return;
-      }
-      const r = el.getBoundingClientRect();
       const p = panRef.current;
       const s = scaleRef.current;
-      if (s === 0) {
-        rafId = requestAnimationFrame(tick);
-        return;
-      }
-      setLiveDragBounds({
+      if (s === 0) { rafId = requestAnimationFrame(tick); return; }
+
+      const toWorld = (r: DOMRect): Bounds => ({
         left: (r.left - p.x) / s,
         top: (r.top - p.y) / s,
         width: r.width / s,
         height: r.height / s,
       });
+
+      const elA = inner.querySelector<HTMLElement>(`[data-blob-card][data-blob-id="${id}"] [data-blob-card-inner]`);
+      if (!elA) { rafId = requestAnimationFrame(tick); return; }
+      const boundsA = toWorld(elA.getBoundingClientRect());
+      setLiveDragBounds(boundsA);
+
+      // Read all other visible blobs from DOM and find best merge target.
+      const visible = visibleBlobsRef.current;
+      let bestId: string | null = null;
+      let bestGap = Infinity;
+      let bestOverlap = 0;
+      let bestBoundsB: Bounds | null = null;
+
+      for (const b of visible) {
+        if (b.id === id) continue;
+        const elB = inner.querySelector<HTMLElement>(`[data-blob-card][data-blob-id="${b.id}"] [data-blob-card-inner]`);
+        if (!elB) continue;
+        const boundsB = toWorld(elB.getBoundingClientRect());
+        const gap = gapBetweenRects(boundsA, boundsB);
+        if (gap >= CLOSE_THRESHOLD) continue;
+        const overlap = overlapArea(boundsA, boundsB);
+        const strictlyBetter =
+          bestId == null ||
+          overlap > bestOverlap ||
+          (overlap === bestOverlap && gap < bestGap);
+        if (strictlyBetter) {
+          bestId = b.id;
+          bestGap = gap;
+          bestOverlap = overlap;
+          bestBoundsB = boundsB;
+        }
+      }
+
+      if (bestId == null || bestBoundsB == null) {
+        setLiveMergeState(null);
+      } else {
+        const cueA = getMergeCueRect(boundsA, MERGE_CUE_PADDING);
+        const cueB = getMergeCueRect(bestBoundsB, MERGE_CUE_PADDING);
+        const mergePossible = gapBetweenRects(cueA, cueB) <= 0;
+        setLiveMergeState({ closeTargetId: bestId, mergePossible, boundsA, boundsB: bestBoundsB });
+      }
+
       rafId = requestAnimationFrame(tick);
     };
     rafId = requestAnimationFrame(tick);
     return () => {
       cancelAnimationFrame(rafId);
       setLiveDragBounds(null);
+      setLiveMergeState(null);
     };
   }, [draggingBlobId]);
 
-  // Merge cues and merge target only consider visible (non-hidden) blobs.
-  // Use live drag bounds from DOM when available so cues appear as soon as the dragged blob overlaps another on screen.
-  // mergePossible: true only when merge-cue rects (padded blob bounds) touch or overlap.
-  const { closeTargetId, veryCloseTargetId, mergePossible, mergeGap, mergeBoundsA, mergeBoundsB } = React.useMemo(() => {
+  // When dragging a blob, pan the canvas if the cursor touches the viewport edge so the blob stays in view.
+  useLayoutEffect(() => {
+    if (!draggingBlobId) return;
+    const onPointerMove = (e: PointerEvent) => {
+      dragCursorRef.current = { clientX: e.clientX, clientY: e.clientY };
+    };
+    document.addEventListener("pointermove", onPointerMove, { capture: true });
+    let rafId: number;
+    const tick = () => {
+      const canvas = canvasRef.current;
+      if (!canvas) {
+        rafId = requestAnimationFrame(tick);
+        return;
+      }
+      const { clientX, clientY } = dragCursorRef.current;
+      const w = canvas.clientWidth;
+      const h = canvas.clientHeight;
+      let dx = 0;
+      let dy = 0;
+      // Use >= w-1 (not strictly > w) because browsers clamp clientX to innerWidth-1
+      // when pointer is captured and exits the window.
+      if (clientX <= 1) dx = DRAG_EDGE_PAN_SPEED;
+      else if (clientX >= w - 1) dx = -DRAG_EDGE_PAN_SPEED;
+      if (clientY <= 1) dy = DRAG_EDGE_PAN_SPEED;
+      else if (clientY >= h - 1) dy = -DRAG_EDGE_PAN_SPEED;
+      if (dx !== 0 || dy !== 0) {
+        setPan((prev) => {
+          const next = { x: prev.x + dx, y: prev.y + dy };
+          panRef.current = next;
+          return next;
+        });
+        setIsShowingAll(false);
+        // Re-position dragging blob so it keeps following the (clamped) cursor
+        // as the view pans — otherwise the blob appears stuck at the edge.
+        const pickOffset = dragPickOffsetRef.current;
+        const blobId = draggingBlobId;
+        if (pickOffset && blobId) {
+          const newPan = panRef.current;
+          const s = scaleRef.current;
+          if (s > 0) {
+            const worldCursorX = (clientX - newPan.x) / s;
+            const worldCursorY = (clientY - newPan.y) / s;
+            dispatch({
+              type: "SET_POSITION",
+              payload: { id: blobId, x: worldCursorX - pickOffset.x, y: worldCursorY - pickOffset.y },
+            });
+          }
+        }
+      }
+      rafId = requestAnimationFrame(tick);
+    };
+    rafId = requestAnimationFrame(tick);
+    return () => {
+      document.removeEventListener("pointermove", onPointerMove, { capture: true });
+      cancelAnimationFrame(rafId);
+    };
+  }, [draggingBlobId, dispatch]);
+
+  // Merge cues and merge target.
+  // Primary: liveMergeState (DOM-driven, updated every frame).
+  // Fallback: store-based bounds (for the brief moment before the rAF fires on drag start).
+  const { closeTargetId, mergePossible, mergeBoundsA, mergeBoundsB } = React.useMemo(() => {
+    if (liveMergeState) {
+      return {
+        closeTargetId: liveMergeState.closeTargetId,
+        mergePossible: liveMergeState.mergePossible,
+        mergeBoundsA: liveMergeState.boundsA,
+        mergeBoundsB: liveMergeState.boundsB,
+      };
+    }
     if (!draggingBlobId || visibleBlobs.length < 2) {
-      return { closeTargetId: null, veryCloseTargetId: null, mergePossible: false, mergeGap: Infinity, mergeBoundsA: null, mergeBoundsB: null };
+      return { closeTargetId: null, mergePossible: false, mergeBoundsA: null, mergeBoundsB: null };
     }
     const draggingBlob = visibleBlobs.find((b) => b.id === draggingBlobId);
     if (!draggingBlob) {
-      return { closeTargetId: null, veryCloseTargetId: null, mergePossible: false, mergeGap: Infinity, mergeBoundsA: null, mergeBoundsB: null };
+      return { closeTargetId: null, mergePossible: false, mergeBoundsA: null, mergeBoundsB: null };
     }
     const boundsA = liveDragBounds ?? getBlobBounds(draggingBlob);
     let bestId: string | null = null;
     let bestGap = Infinity;
+    let bestOverlap = 0;
+    let bestBoundsB: Bounds | null = null;
     for (const b of visibleBlobs) {
       if (b.id === draggingBlobId) continue;
       const boundsB = getBlobBounds(b);
       const gap = gapBetweenRects(boundsA, boundsB);
-      if (gap < bestGap) {
-        bestGap = gap;
+      if (gap >= CLOSE_THRESHOLD) continue;
+      const overlap = overlapArea(boundsA, boundsB);
+      const strictlyBetter =
+        bestId == null ||
+        overlap > bestOverlap ||
+        (overlap === bestOverlap && gap < bestGap);
+      if (strictlyBetter) {
         bestId = b.id;
+        bestGap = gap;
+        bestOverlap = overlap;
+        bestBoundsB = boundsB;
       }
     }
-    const closeTargetId = bestId != null && bestGap < CLOSE_THRESHOLD ? bestId : null;
-    const veryCloseTargetId = bestId != null && bestGap < VERY_CLOSE_THRESHOLD ? bestId : null;
-    const mergeBoundsB = bestId != null ? getBlobBounds(visibleBlobs.find((b) => b.id === bestId)!) : null;
+    if (bestId == null || bestBoundsB == null) {
+      return { closeTargetId: null, mergePossible: false, mergeBoundsA: boundsA, mergeBoundsB: null };
+    }
     const cueA = getMergeCueRect(boundsA, MERGE_CUE_PADDING);
-    const cueB = mergeBoundsB != null ? getMergeCueRect(mergeBoundsB, MERGE_CUE_PADDING) : null;
-    const mergePossible =
-      closeTargetId != null && cueB != null && gapBetweenRects(cueA, cueB) <= 0;
-    return {
-      closeTargetId,
-      veryCloseTargetId,
-      mergePossible,
-      mergeGap: bestId != null ? bestGap : Infinity,
-      mergeBoundsA: boundsA,
-      mergeBoundsB,
-    };
-  }, [draggingBlobId, visibleBlobs, liveDragBounds]);
-
-  useLayoutEffect(() => {
-    if (!draggingBlobId || !closeTargetId || !canvasInnerRef.current || !pan || scale === 0) {
-      setMeasuredMergeBounds(null);
-      return;
-    }
-    const inner = canvasInnerRef.current;
-    const elA = inner.querySelector<HTMLElement>(`[data-blob-card][data-blob-id="${draggingBlobId}"] [data-blob-card-inner]`);
-    const elB = inner.querySelector<HTMLElement>(`[data-blob-card][data-blob-id="${closeTargetId}"] [data-blob-card-inner]`);
-    if (!elA || !elB) {
-      setMeasuredMergeBounds(null);
-      return;
-    }
-    const rA = elA.getBoundingClientRect();
-    const rB = elB.getBoundingClientRect();
-    const worldA = {
-      left: (rA.left - pan.x) / scale,
-      top: (rA.top - pan.y) / scale,
-      width: rA.width / scale,
-      height: rA.height / scale,
-    };
-    const worldB = {
-      left: (rB.left - pan.x) / scale,
-      top: (rB.top - pan.y) / scale,
-      width: rB.width / scale,
-      height: rB.height / scale,
-    };
-    setMeasuredMergeBounds({ a: worldA, b: worldB });
-  }, [draggingBlobId, closeTargetId, pan, scale]);
+    const cueB = getMergeCueRect(bestBoundsB, MERGE_CUE_PADDING);
+    const mergePossible = gapBetweenRects(cueA, cueB) <= 0;
+    return { closeTargetId: bestId, mergePossible, mergeBoundsA: boundsA, mergeBoundsB: bestBoundsB };
+  }, [draggingBlobId, visibleBlobs, liveDragBounds, liveMergeState]);
 
   // Clear LLM summary after 12s — paused while the mouse is over the word box
   useEffect(() => {
@@ -552,6 +638,23 @@ export default function Home() {
     return () => document.removeEventListener("keydown", onKeyDown, true);
   }, []);
 
+  // Track cursor over the entire document (including blob cards) for remote presence.
+  useEffect(() => {
+    const onMove = (e: PointerEvent) => {
+      if (e.pointerType === "mouse" && e.buttons > 1) return; // skip right/middle drag
+      const { x: worldX, y: worldY } = screenToWorld(
+        e.clientX,
+        e.clientY,
+        panRef.current.x,
+        panRef.current.y,
+        scaleRef.current
+      );
+      updateLocalCursor(worldX, worldY);
+    };
+    document.addEventListener("pointermove", onMove, { passive: true });
+    return () => document.removeEventListener("pointermove", onMove);
+  }, [updateLocalCursor]);
+
   const handlePointerDown = useCallback(
     (e: React.PointerEvent) => {
       const target = e.target as HTMLElement;
@@ -568,11 +671,7 @@ export default function Home() {
         primaryPointerIdRef.current = e.pointerId;
         menuWasOpenAtPointerDown.current = anyMenuOpenRef.current;
         hadSelectionAtPointerDownRef.current = selectedIdsCountRef.current > 0;
-        const activeInBlob =
-          document.activeElement instanceof Node &&
-          document.activeElement.closest?.("[data-blob-card]") != null;
-        hadFocusBlobAtPointerDownRef.current =
-          focusedBlobIdRef.current != null || focusBlobId != null || activeInBlob;
+        hadFocusBlobAtPointerDownRef.current = focusedBlobIdRef.current != null;
         dragStart.current = { x: e.clientX, y: e.clientY };
         pointerDownTimeRef.current = Date.now();
         gestureChosenRef.current = false;
@@ -582,21 +681,11 @@ export default function Home() {
       }
       (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
     },
-    [anyMenuOpenRef, focusBlobId]
+    [anyMenuOpenRef]
   );
 
   const handlePointerMove = useCallback((e: React.PointerEvent) => {
     activePointersRef.current.set(e.pointerId, { clientX: e.clientX, clientY: e.clientY });
-    if (activePointersRef.current.size === 1) {
-      const { x: worldX, y: worldY } = screenToWorld(
-        e.clientX,
-        e.clientY,
-        panRef.current.x,
-        panRef.current.y,
-        scaleRef.current
-      );
-      updateLocalCursor(worldX, worldY);
-    }
     const pointers = activePointersRef.current;
     if (pointers.size === 2 && pointerDownOnCanvas.current) {
       const [[, a], [, b]] = Array.from(pointers.entries());
@@ -659,7 +748,7 @@ export default function Home() {
       selectionRectRef.current = rect;
       setSelectionRect(rect);
     }
-  }, [updateLocalCursor]);
+  }, []);
 
   const handlePointerUp = useCallback(
     (e: React.PointerEvent<HTMLDivElement>) => {
@@ -757,8 +846,13 @@ export default function Home() {
     }
   }, [dispatch]);
 
+  const handleDragPickOffset = useCallback((offsetX: number, offsetY: number) => {
+    dragPickOffsetRef.current = { x: offsetX, y: offsetY };
+  }, []);
+
   const handleDragEnd = useCallback(
     (blobId: string) => {
+      dragPickOffsetRef.current = null;
       const originalPosition =
         multiDragStartPositionsRef.current?.[blobId] ??
         (mergeDragStartPositionRef.current?.blobId === blobId
@@ -770,18 +864,19 @@ export default function Home() {
       if (mergePossible && closeTargetId && blobId !== closeTargetId) {
         const targetId = closeTargetId;
         // Merge at top of stationary blob if dragged blob is above its vertical midpoint, else at bottom
-        const sourceBlob = blobs.find((b) => b.id === blobId);
-        const targetBlob = blobs.find((b) => b.id === targetId);
         const prependSource =
-          sourceBlob && targetBlob
-            ? (() => {
-                const boundsA = getBlobBounds(sourceBlob);
-                const boundsB = getBlobBounds(targetBlob);
-                const sourceCenterY = boundsA.top + boundsA.height / 2;
-                const targetMidY = boundsB.top + boundsB.height / 2;
-                return sourceCenterY < targetMidY;
-              })()
-            : false;
+          (() => {
+            const live = liveMergeState;
+            if (live) {
+              return live.boundsA.top + live.boundsA.height / 2 < live.boundsB.top + live.boundsB.height / 2;
+            }
+            const sourceBlob = blobs.find((b) => b.id === blobId);
+            const targetBlob = blobs.find((b) => b.id === targetId);
+            if (!sourceBlob || !targetBlob) return false;
+            const boundsA = getBlobBounds(sourceBlob);
+            const boundsB = getBlobBounds(targetBlob);
+            return boundsA.top + boundsA.height / 2 < boundsB.top + boundsB.height / 2;
+          })();
         // Preserve target blob size when merging (so Raw mode merged blob doesn’t resize)
         const canvas = canvasRef.current;
         if (canvas && scale > 0) {
@@ -802,7 +897,7 @@ export default function Home() {
       }
       setDraggingBlobId(null);
     },
-    [dispatch, scale, mergePossible, closeTargetId, blobs]
+    [dispatch, scale, mergePossible, closeTargetId, liveMergeState, blobs]
   );
 
   const handleWheel = useCallback((e: WheelEvent) => {
@@ -1054,6 +1149,11 @@ export default function Home() {
         canDeselectAll={selectedIds.length > 0}
         onDeselectAll={() => setSelectedIds([])}
         canZoomToSelection={selectedIds.length > 0}
+        canCleanup={blobs.some((b) => isBlobContentEmpty(b.content))}
+        onCleanup={() => {
+          const ids = blobs.filter((b) => isBlobContentEmpty(b.content)).map((b) => b.id);
+          if (ids.length) dispatch({ type: "DELETE_BLOBS", payload: ids });
+        }}
       />
       <div
         ref={canvasRef}
@@ -1076,12 +1176,9 @@ export default function Home() {
             transformOrigin: "0 0",
           }}
         >
-        {draggingBlobId && closeTargetId && (measuredMergeBounds ?? (mergeBoundsA && mergeBoundsB)) && (() => {
-          const draggingBlob = visibleBlobs.find((b) => b.id === draggingBlobId);
-          const rectB = measuredMergeBounds?.b ?? mergeBoundsB!;
-          const rectA = measuredMergeBounds && draggingBlob
-            ? { left: draggingBlob.x, top: draggingBlob.y, width: measuredMergeBounds.a.width, height: measuredMergeBounds.a.height }
-            : (measuredMergeBounds?.a ?? mergeBoundsA!);
+        {draggingBlobId && closeTargetId && (liveDragBounds ?? mergeBoundsA) && mergeBoundsB && (() => {
+          const rectA = liveDragBounds ?? mergeBoundsA!;
+          const rectB = mergeBoundsB!;
           const sourceCenterY = rectA.top + rectA.height / 2;
           const targetMidY = rectB.top + rectB.height / 2;
           const insertAtTop = sourceCenterY < targetMidY;
@@ -1098,7 +1195,6 @@ export default function Home() {
             <BlobBoundaryOverlay
               rectA={rectA}
               rectB={rectB}
-              gap={mergeGap}
               isVeryClose={mergePossible}
               insertAtTop={insertAtTop}
               viewport={viewport}
@@ -1112,10 +1208,15 @@ export default function Home() {
             blobMarkdownView={preferences.blobMarkdownView}
             scale={scale}
             pan={pan}
+            panRef={panRef}
+            scaleRef={scaleRef}
             blobbyBackerSizePx={preferences.blobbyBackerSizePx}
             isSelected={selectedIds.includes(blob.id)}
             autoFocus={blob.id === focusBlobId}
-            onAutoFocusDone={() => setFocusBlobId(null)}
+            onAutoFocusDone={() => {
+              setFocusBlobId(null);
+              focusedBlobIdRef.current = null;
+            }}
             onUpdate={(lines) =>
               dispatch({
                 type: "UPDATE_BLOB",
@@ -1149,10 +1250,11 @@ export default function Home() {
             onLock={() => dispatch({ type: "SET_LOCKED", payload: { ids: [blob.id], locked: true } })}
             onUnlock={() => dispatch({ type: "SET_LOCKED", payload: { ids: [blob.id], locked: false } })}
             onDragStart={handleDragStart}
+            onDragPickOffset={handleDragPickOffset}
             onDragEnd={handleDragEnd}
           />
         ))}
-        {selectedIds.length > 0 && selectionBounds && (
+        {selectedIds.length > 1 && selectionBounds && (
           <div data-selection-overlay>
             <SelectionOverlay
               bounds={selectionBounds}
@@ -1190,6 +1292,21 @@ export default function Home() {
                   .join("\n\n");
                 void navigator.clipboard.writeText(text);
               }}
+              onRemoveEmptyLines={() => {
+                selectedIds.forEach((id) => {
+                  const blob = blobs.find((b) => b.id === id);
+                  if (!blob?.locked && blob?.content != null) {
+                    const lines = markdownToLines(blob.content);
+                    const cleaned = removeEmptyLines(lines);
+                    if (cleaned.length !== lines.length) {
+                      dispatch({
+                        type: "UPDATE_BLOB",
+                        payload: { id: blob.id, content: linesToMarkdown(cleaned) },
+                      });
+                    }
+                  }
+                });
+              }}
               allSelectedLocked={
                 selectedIds.length > 0 &&
                 selectedIds.every(
@@ -1197,6 +1314,8 @@ export default function Home() {
                 )
               }
               scale={scale}
+              panRef={panRef}
+              scaleRef={scaleRef}
               onDragStart={() => {
                 const ids = selectedIdsRef.current;
                 if (ids.length === 0) return;

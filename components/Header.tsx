@@ -23,6 +23,8 @@ export function Header({
   canDeselectAll = false,
   onDeselectAll,
   canZoomToSelection = false,
+  canCleanup = false,
+  onCleanup,
 }: {
   hasHiddenBlobs?: boolean;
   onUnhideAll?: () => void;
@@ -38,6 +40,9 @@ export function Header({
   onDeselectAll?: () => void;
   /** Enable "Zoom to selection" when one or more blobs are selected. */
   canZoomToSelection?: boolean;
+  /** Enable "Cleanup" when there are empty blobs to delete. */
+  canCleanup?: boolean;
+  onCleanup?: () => void;
 }) {
   const { preferences, setPreferences, userId, incrementMenuOpen, decrementMenuOpen, undo, redo, canUndo, canRedo, undoLabel, redoLabel } = useBlobsContext();
   const [menuOpen, setMenuOpen] = useState(false);
@@ -322,6 +327,20 @@ export function Header({
                 }}
               >
                 Zoom to selection
+              </button>
+            </div>
+            <div className={styles.menuSection}>
+              <button
+                type="button"
+                className={styles.menuAction}
+                data-testid="cleanup"
+                disabled={!canCleanup}
+                onClick={() => {
+                  onCleanup?.();
+                  setMenuOpen(false);
+                }}
+              >
+                Cleanup
               </button>
             </div>
             <div className={styles.menuSection}>

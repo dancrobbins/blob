@@ -161,3 +161,9 @@ export function isBlobContentEmpty(content: string | undefined): boolean {
   const lines = markdownToLines(content ?? "");
   return lines.every((line) => !(line.text ?? "").trim());
 }
+
+/** Remove lines that are blank or only a bullet (empty line text). Returns at least one empty bullet line. */
+export function removeEmptyLines(lines: BlobLine[]): BlobLine[] {
+  const filtered = lines.filter((line) => (line.text ?? "").trim() !== "");
+  return filtered.length > 0 ? filtered : [{ text: "", style: "bullet" }];
+}

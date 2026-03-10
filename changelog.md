@@ -1,5 +1,44 @@
 # Changelog
 
+## 2026-03-09 (Remove empty lines menu option)
+- Added "Remove empty lines" to the blob "..." menu (single blob and multi-select). When chosen, it removes any lines that are blank or only a bullet from the blob(s).
+
+## 2026-03-09 (merge cues fully DOM-driven, no React lag)
+- Merge cue computation (target selection, fused outline, insertion bar) is now done entirely from live DOM `getBoundingClientRect()` readings every animation frame. Previously the merge target was computed from React state/store positions which lagged behind the pointer, causing cues to not appear or to pick the wrong blob when the dragging blob overlapped multiple blobs. Both the dragging blob's position and all stationary blobs' positions are now read from the DOM so detection and rendering are always in sync with what's on screen.
+
+## 2026-03-09 (drag-past-edge hard boundary fix)
+- When dragging a blob past the right (or any) window edge, Chromium clamps `clientX` to `innerWidth - 1` on a captured pointer, so `pointermove` stops carrying new cursor positions. The auto-pan RAF was running but `BlobCard.handlePointerMove` only fires on pointer events, so the blob appeared frozen at the edge while the view scrolled. Fix: the RAF tick now also updates the blob position on every pan frame using the stored world-space pick offset and the clamped cursor position plus the newly-applied pan. Edge detection thresholds widened from `>= w` / `<= 0` to `>= w - 1` / `<= 1` to ensure the clamped value triggers panning.
+
+## 2026-03-09 (merge target by most overlap)
+- When the dragging blob is near or overlapping multiple blobs, the merge target (and thus merge cues) now uses the blob with the **largest overlap** with the dragging blob instead of the first one in list order. So if more of the dragging blob is over the blob on its left, that one gets the cues.
+
+## 2026-03-09 (drag pick-correlation fix)
+- Fixed pick-correlation drift during edge auto-pan: drag now stores a world-space pick offset (cursor world position minus blob world position at drag start) and on every move computes the blob's new position as `worldCursor - pickOffset` using the live panRef/scaleRef. This means when auto-pan shifts the view, the blob immediately tracks the cursor correctly with no slippage. The same fix was applied to multi-blob drag in SelectionOverlay.
+
+## 2026-03-09 (drag blob edge auto-pan)
+- When dragging a blob, if the cursor reaches the viewport edge (top, bottom, left, or right), the canvas now auto-pans in that direction so the dragged blob stays in view. Panning starts as soon as the cursor touches the edge and continues at a fixed speed while at the edge.
+
+## 2026-03-09 (remote cursor real-time and user number)
+- Remote cursor moves were slow because the hot-path DOM callback was only invoked on join/leave; Supabase delivers cursor updates via **sync** events. Sync now also invokes the callback so cursor position updates apply directly to the DOM every time. React state (otherPresences) is only updated when the set of session IDs changes (someone joins or leaves), so we don't re-render on every move and the "Name 2" suffix for multiple sessions of the same account is correct and stable.
+
+## 2026-03-09 (single tap to create blob — root cause fixed)
+- Removed accidental setSelectedIds([blob.id]) call from onFocus that was added during the insertion-point fix. It caused the blob to become "selected" whenever it was focused, so the selection-guard in handlePointerUp always blocked the next canvas tap. Single tap on empty canvas now reliably creates a new blob.
+
+## 2026-03-09 (single tap to create blob fixed)
+- Removed the document.activeElement DOM check that was blocking new-blob creation. The previously created/focused blob kept DOM focus at pointer-down time, so the check always blocked the tap. The focusedBlobIdRef alone is sufficient: it's set on manual focus and cleared on blur or after auto-focus completes.
+
+## 2026-03-09 (single tap to create blob on canvas)
+- Single tap on empty canvas again creates a new blob. The insertion-point guard was treating the newly created (auto-focused) blob as \"user had focus,\" so the next tap was incorrectly skipped. We now clear focusedBlobIdRef in onAutoFocusDone so only manually focused blobs block create-on-tap.
+
+## 2026-03-09 (remote cursor avatar position)
+- Avatar bubble and name tag now sit beside the bottom of the pointer icon (right of bottom-right of arrow body), matching the design sketch. Previously they were offset from the hotspot/tip area.
+
+## 2026-03-09 (remote cursor near-real-time DOM update)
+- Remote cursors no longer cause a React re-render on every move. Cursor positions are now applied directly to DOM elements via refs (no setState on the hot path). A document-level pointermove listener tracks the local cursor everywhere (including over blob cards, not just the canvas). The rAF double-delay was removed so positions send immediately on move then are throttled at 33ms on the wire.
+
+## 2026-03-09 (cursor icon and near-real-time presence)
+- Other users' cursor now uses a standard default pointer icon (inline SVG with notch) instead of a custom path. Cursor presence updates made more real-time: throttle reduced to 33ms and pointer moves batched with requestAnimationFrame so we send at most once per frame (~60/sec) then throttle to 33ms on the wire.
+
 ## 2026-03-09 (tap in existing blob activates insertion point again)
 - Tapping in an existing blob again activates the insertion point. User focus is now tracked in a ref (focusedBlobIdRef) instead of state so we do not set focusBlobId and trigger the autoFocus effect when the user taps an existing blob; autoFocus remains only for newly created blobs.
 

@@ -21,6 +21,19 @@ export function gapBetweenRects(a: BlobBounds, b: BlobBounds): number {
   return Math.max(gapX, gapY);
 }
 
+/**
+ * Area of intersection of two rects (0 if they do not overlap).
+ * Used to pick the merge target when the dragging blob overlaps multiple blobs (choose the one with most overlap).
+ */
+export function overlapArea(a: BlobBounds, b: BlobBounds): number {
+  const left = Math.max(a.left, b.left);
+  const right = Math.min(a.left + a.width, b.left + b.width);
+  const top = Math.max(a.top, b.top);
+  const bottom = Math.min(a.top + a.height, b.top + b.height);
+  if (left >= right || top >= bottom) return 0;
+  return (right - left) * (bottom - top);
+}
+
 /** Expand blob bounds by padding on all sides to get the merge-cue rect. */
 export function getMergeCueRect(bounds: BlobBounds, padding: number = MERGE_CUE_PADDING): BlobBounds {
   return {
